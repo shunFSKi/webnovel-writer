@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Compatible-purple.svg)](https://claude.ai/claude-code)
 
-<a href="https://trendshift.io/repositories/22487" target="_blank"><img src="https://trendshift.io/api/badge/repositories/22487" alt="lingfengQAQ%2Fwebnovel-writer | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+[项目仓库](https://github.com/shunFSKi/webnovel-writer)
 ## 项目简单介绍
 
 `Webnovel Writer` 是基于 Claude Code 的长篇网文创作系统，目标是降低 AI 写作中的“遗忘”和“幻觉”，支持长周期连载创作。
@@ -20,11 +20,11 @@
 
 ## 快速开始
 
-### 1) 安装插件（官方 Marketplace）
+### 1) 安装插件（自定义 Marketplace）
 
 ```bash
-claude plugin marketplace add lingfengQAQ/webnovel-writer --scope user
-claude plugin install webnovel-writer@webnovel-writer-marketplace --scope user
+claude plugin marketplace add shunFSKi/webnovel-writer --scope user
+claude plugin install webnovel-writer@shunfski-webnovel-marketplace --scope user
 ```
 
 > 仅当前项目生效时，将 `--scope user` 改为 `--scope project`。
@@ -32,7 +32,7 @@ claude plugin install webnovel-writer@webnovel-writer-marketplace --scope user
 ### 2) 安装 Python 依赖
 
 ```bash
-python -m pip install -r https://raw.githubusercontent.com/lingfengQAQ/webnovel-writer/HEAD/requirements.txt
+python -m pip install -r https://raw.githubusercontent.com/shunFSKi/webnovel-writer/HEAD/requirements.txt
 ```
 
 说明：该入口会同时安装核心写作链路与 Dashboard 依赖。
@@ -149,13 +149,13 @@ model: sonnet
 ## 开源协议
 本项目使用 `GPL v3` 协议，详见 `LICENSE`。
 
-## Star 历史
+## 仓库地址
 
-[![Star History Chart](https://api.star-history.com/svg?repos=lingfengQAQ/webnovel-writer&type=Date)](https://star-history.com/#lingfengQAQ/webnovel-writer&Date)
+`shunFSKi/webnovel-writer`：`https://github.com/shunFSKi/webnovel-writer`
 
 ## 致谢
 
-本项目使用 **Claude Code + Gemini CLI + Codex** 配合 Vibe Coding 方式开发。  
+本项目使用 **Claude Code + Gemini CLI + Codex** 配合 Vibe Coding 方式开发。
 灵感来源：[Linux.do 帖子](https://linux.do/t/topic/1397944/49)
 
 ## 贡献

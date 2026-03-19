@@ -1,11 +1,11 @@
 {
-  "name": "webnovel-writer-marketplace",
-  "description": "Marketplace for the webnovel-writer Claude Code plugin.",
+  "name": "shunfski-webnovel-marketplace",
+  "description": "Marketplace for the shunFSKi webnovel-writer Claude Code plugin.",
   "metadata": {
-    "description": "Marketplace for installing the webnovel-writer plugin."
+    "description": "Marketplace for installing the shunFSKi webnovel-writer plugin."
   },
   "owner": {
-    "name": "lingfengQAQ"
+    "name": "shunFSKi"
   },
   "plugins": [
     {
@@ -13,11 +13,11 @@
       "description": "长篇网文创作系统（skills + agents + data chain + RAG）",
       "version": "5.5.4",
       "author": {
-        "name": "lingfengQAQ"
+        "name": "shunFSKi"
       },
       "source": "./webnovel-writer",
       "category": "productivity",
-      "homepage": "https://github.com/lingfengQAQ/webnovel-writer"
+      "homepage": "https://github.com/shunFSKi/webnovel-writer"
     }
   ]
 }
