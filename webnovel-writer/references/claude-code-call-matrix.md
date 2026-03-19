@@ -17,15 +17,17 @@
 | `/webnovel-write` | `webnovel-write` Skill | 写作流程 Step 5 数据链更新时 | Task 调 `data-agent`（内部再写 state/index） |
 | `/webnovel-query` | `webnovel-query` Skill | 查询“伏笔紧急度/Strand 节奏”等分析请求时 | `scripts/status_reporter.py --focus urgency/strand` |
 | `/webnovel-resume` | `webnovel-resume` Skill | 中断恢复检测、清理、断点恢复时 | `scripts/workflow_manager.py detect/cleanup/clear` |
+| `/webnovel-study` | `webnovel-study` Skill | 样书拆解流程的准备、桥接 memory、最终校验时 | `scripts/webnovel.py study prepare/bridge-memory/verify` |
 
 ## 脚本级矩阵（脚本 -> 谁触发 -> 什么时候）
 
 | 脚本 | 主要触发方 | 触发节点 | 备注 |
 |---|---|---|---|
 | `${CLAUDE_PLUGIN_ROOT}/scripts/webnovel.py` | 所有 Skills / Agents | 任何需要调用 CLI 的节点 | **统一入口**：负责解析真实 book project_root，并转发到 `data_modules/*` 或 `scripts/*.py`，避免 `PYTHONPATH/cd/参数顺序` 导致的隐性失败 |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/data_modules/study_manager.py` | `webnovel-study` Skill（经 `webnovel.py study` 转发） | Step 0 预处理、Step 8 memory bridge、Step 9 verify | 负责 `prepare / bridge-memory / verify`，不负责语义写报告 |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/update_state.py` | `webnovel-plan` Skill | 章纲/卷规划落盘后更新 `state.json` | 也可被自动化脚本调用；默认不是人工常规入口 |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/status_reporter.py` | `webnovel-query` Skill / `pacing-checker` Agent(可选) | 查询分析或节奏审查时 | 产出健康报告与紧急度分析 |
-| `${CLAUDE_PLUGIN_ROOT}/scripts/workflow_manager.py` | `webnovel-resume` Skill | 恢复流程 detect/cleanup/clear | 仅恢复场景触发 |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/workflow_manager.py` | `webnovel-resume` Skill | 恢复流程 detect/cleanup/clear | 仅恢复场景触发；`study` 第一版暂不接入 |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/init_project.py` | `webnovel-init` Skill | 项目初始化阶段 | 负责项目脚手架与基础状态文件 |
 
 ## 内部库调用（非独立命令）
@@ -33,10 +35,10 @@
 | 内部模块 | 调用方 | 触发时机 |
 |---|---|---|
 | `${CLAUDE_PLUGIN_ROOT}/scripts/data_modules/state_validator.py` | `update_state.py`、`status_reporter.py` | 读写 `state.json` 时自动规范化与校验 |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/data_modules/study_manager.py` | `data_modules/webnovel.py` | `study` 子命令转发时 |
 
 ## 变更约束（后续开发必须遵守）
 
 1. 若新增“可由 Skill/Agent 触发”的脚本，必须补充到本矩阵。
 2. 若脚本触发时机变化（例如从 plan 阶段改到 write 阶段），必须同步更新本矩阵。
 3. PR/提交说明中需写清“调用方 + 触发节点 + 是否允许人工调用”。
-
