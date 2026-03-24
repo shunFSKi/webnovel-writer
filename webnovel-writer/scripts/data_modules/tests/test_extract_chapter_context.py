@@ -142,6 +142,25 @@ def test_build_chapter_context_payload_includes_contract_sections(tmp_path):
     (refs_dir / "genre-profiles.md").write_text("## xuanhuan\n- 升级线清晰", encoding="utf-8")
     (refs_dir / "reading-power-taxonomy.md").write_text("## xuanhuan\n- 悬念钩优先", encoding="utf-8")
 
+    settings_dir = tmp_path / "设定集"
+    settings_dir.mkdir(parents=True, exist_ok=True)
+    (settings_dir / "风格契约.md").write_text("- 少用‘先……再……’\n- 警惕‘像要……’\n- 配角先顾自己\n", encoding="utf-8")
+    (settings_dir / "写作风格.md").write_text("- 不要把信息写成死直线\n- 对白不能像台词稿\n- 少写不是……是……\n", encoding="utf-8")
+    (cfg.webnovel_dir / "preferences.json").write_text(
+        json.dumps(
+            {
+                "style": {
+                    "sequence_marker_policy": "少用先……再……模板",
+                    "xiang_virtualization_policy": "警惕像要、像在、像是",
+                    "dialogue_policy": "对白优先大白话",
+                    "information_flow_policy": "允许弱连接和非最优反应",
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
     idx = IndexManager(cfg)
     idx.save_chapter_reading_power(
         ChapterReadingPowerMeta(chapter=2, hook_type="悬念钩", hook_strength="strong", coolpoint_patterns=["身份掉马"])
@@ -153,11 +172,18 @@ def test_build_chapter_context_payload_includes_contract_sections(tmp_path):
     payload = build_chapter_context_payload(tmp_path, 3)
     assert payload["context_contract_version"] == "v2"
     assert payload.get("context_weight_stage") in {"early", "mid", "late"}
+    assert payload.get("constraint_pack_hash")
     assert "writing_guidance" in payload
     assert isinstance(payload["writing_guidance"].get("guidance_items"), list)
     assert isinstance(payload["writing_guidance"].get("checklist"), list)
     assert isinstance(payload["writing_guidance"].get("checklist_score"), dict)
     assert payload["genre_profile"].get("genre") == "xuanhuan"
+    assert "project_constraint_pack" in payload
+    assert payload["project_constraint_pack"].get("constraint_pack_hash") == payload.get("constraint_pack_hash")
+    assert isinstance(payload.get("chapter_style_targets"), list)
+    assert payload.get("chapter_style_targets")
+    assert isinstance(payload.get("chapter_positive_evidence_targets"), list)
+    assert payload.get("chapter_positive_evidence_targets")
     assert "rag_assist" in payload
     assert isinstance(payload["rag_assist"], dict)
     assert payload["rag_assist"].get("invoked") is False
@@ -215,6 +241,18 @@ def test_render_text_contains_writing_guidance_section(tmp_path):
                 "signals": {"risk_flags": ["pattern_overuse_watch"]},
             },
         },
+        "constraint_pack_hash": "abc123",
+        "project_constraint_pack": {
+            "constraint_pack_hash": "abc123",
+            "rules": [
+                {"id": "STYLE_SEQ_XIAN_TEMPLATE", "hard_or_soft": "hard"},
+                {"id": "STYLE_XIANG_VIRTUALIZATION", "hard_or_soft": "hard"},
+            ],
+        },
+        "chapter_style_targets": ["正文自然顺嘴", "配角先顾自己"],
+        "chapter_positive_evidence_targets": [
+            {"rule_id": "STYLE_CAUSALITY_TOO_STRAIGHT", "target": "至少1处弱连接信息"}
+        ],
     }
 
     text = _render_text(payload)
@@ -231,6 +269,11 @@ def test_render_text_contains_writing_guidance_section(tmp_path):
     assert "## 长篇方法论策略" in text
     assert "- 适用题材: xianxia" in text
     assert "next_reason=78.0" in text
+    assert "## 项目风格约束" in text
+    assert "- 约束包哈希: abc123" in text
+    assert "### 本章风格目标" in text
+    assert "### 本章正向证据目标" in text
+    assert "[STYLE_CAUSALITY_TOO_STRAIGHT] 至少1处弱连接信息" in text
 
 
 def test_render_text_contains_rag_assist_section_when_hits_exist(tmp_path):

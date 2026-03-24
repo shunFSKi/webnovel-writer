@@ -8,7 +8,7 @@ purpose: 章节生成后的润色阶段加载，基于审查报告修复问题 +
 
 输入来自两部分：
 1. 章节正文（Step 2A/2B 输出）
-2. 审查报告（Step 3 聚合结果）
+2. 审查报告（Step 3 聚合结果，必须包含 `project_style_gate`、`constraint_pack_hash`，若已命中项目风格问题还应包含 `hard_violations` / `soft_suggestions` / `missing_positive_evidence`）
 
 与 Step 2B 的职责边界：
 - Step 2B：风格转译（表达层）
@@ -29,6 +29,18 @@ purpose: 章节生成后的润色阶段加载，基于审查报告修复问题 +
     {"agent": "consistency-checker", "type": "POWER_CONFLICT", "severity": "critical", "location": "第6段", "suggestion": "境界越权"},
     {"agent": "ooc-checker", "type": "OOC", "severity": "high", "location": "第9段", "suggestion": "角色口吻偏离"}
   ],
+  "project_style_gate": {
+    "status": "blocked",
+    "reason": "存在项目风格硬违规",
+    "can_override": false,
+    "constraint_pack_hash": "sha256..."
+  },
+  "constraint_pack_hash": "sha256...",
+  "hard_violations": [
+    {"rule_id": "STYLE_SEQ_XIAN_TEMPLATE", "location": "第3段", "suggestion": "删掉顺序模板，改回直接动作链"}
+  ],
+  "soft_suggestions": [],
+  "missing_positive_evidence": [],
   "pass": true
 }
 ```
@@ -37,11 +49,13 @@ purpose: 章节生成后的润色阶段加载，基于审查报告修复问题 +
 
 ## 2. 执行顺序（必须按序）
 
-1. 修复审查报告中的问题（先 `critical/high`）
-2. 校验网文化 Hard/Soft/Style 规则
-3. 执行 Phase 1 Anti-AI 终检并改写
-4. 执行 No-Poison 毒点规避检查
-5. 输出润色结果与 deviation（若有）
+1. 先修 `project-style-checker` 给出的 `hard_violations` 与 `missing_positive_evidence`
+2. 再修复审查报告中的 `critical/high`
+3. 校验网文化 Hard/Soft/Style 规则
+4. 执行 Phase 1 Anti-AI 终检并改写
+5. 执行 No-Poison 毒点规避检查
+6. 对同一版 `constraint_pack_hash` 重新执行项目风格复检
+7. 输出润色结果与 deviation（若有）
 
 ## 2A. Anti-AI 检测细则（对应执行顺序第 3 步）
 
@@ -86,8 +100,10 @@ purpose: 章节生成后的润色阶段加载，基于审查报告修复问题 +
 - 必须完整执行本节“7层规则 + 高频词库 + 终检清单”，禁止裁剪为“建议项”。
 - 必须按全文逐段检查执行，禁止抽样检查。
 - Step 4 完成后必须输出 `anti_ai_force_check: pass/fail`。
-- 若结果为 `fail`，必须继续留在 Step 4 重写，不得进入 Step 5。
+- Step 4 完成后必须输出 `project_style_force_check: pass/fail`。
+- 若任一结果为 `fail`，必须继续留在 Step 4 重写，不得进入 Step 5。
 - 若命中高风险表达但因剧情必要保留，必须写入 `deviation`（位置 + 原因 + 代价）。
+- 若项目风格问题属于允许例外的软规则，必须额外写入 override/debt 说明，不能只口头说“本章先不修”。
 
 ### 全文检查范围（必查）
 
@@ -264,14 +280,26 @@ purpose: 章节生成后的润色阶段加载，基于审查报告修复问题 +
 必须输出：
 1. 润色后的章节正文
 2. 修复摘要（结构如下）
+3. `constraint_repair_report`（按 rule id 列出已修/未修/例外）
+4. `project_style_force_check`（同一版约束包复检结论）
+5. `unresolved_hard_violations`
+6. `accepted_overrides`
+7. `backwrite_candidates`
 
 ```text
 [润色报告]
 - 严重问题已修复: N 处
 - 高优先级已修复: N 处
 - 中低优先级已修复: N 处
+- 项目风格规则已修复: N 处
 - Anti-AI 改写: N 处
 - anti_ai_force_check: pass/fail
+- project_style_force_check: pass/fail
+- unresolved_hard_violations: N
+- accepted_overrides:
+  - {rule_id}: {原因} -> {due_chapter}
+- backwrite_candidates:
+  - {rule_id/问题模式}: {建议回写}
 - 毒点风险: pass/fail
 - 偏离记录:
   - {位置}: {原因}
@@ -307,11 +335,14 @@ purpose: 章节生成后的润色阶段加载，基于审查报告修复问题 +
 </errors>
 
 <checklist>
+- [ ] `project-style-checker.hard_violations` 已修复或显式记录未过
 - [ ] `critical` 已修复或记录 deviation
 - [ ] `high` 已修复或记录 deviation
 - [ ] Hard 规则全部通过
 - [ ] Phase 1 Anti-AI 全文检查已通过
 - [ ] `anti_ai_force_check=pass`
+- [ ] `project_style_force_check=pass`
+- [ ] `unresolved_hard_violations=0`
 - [ ] No-Poison 五类毒点已检查
 - [ ] 未触碰润色红线
 </checklist>

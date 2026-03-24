@@ -283,6 +283,57 @@ def test_context_manager_reader_signal_with_debt_and_disable_switch(temp_project
     assert manager._load_genre_profile({"project": {"genre": "xuanhuan"}}) == {}
 
 
+def test_context_manager_includes_project_constraint_pack(temp_project):
+    state = {
+        "project": {"genre": "xuanhuan"},
+        "protagonist_state": {"name": "萧炎"},
+        "chapter_meta": {},
+        "disambiguation_warnings": [],
+        "disambiguation_pending": [],
+    }
+    temp_project.state_file.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+
+    temp_project.settings_dir.mkdir(parents=True, exist_ok=True)
+    (temp_project.settings_dir / "风格契约.md").write_text(
+        "- 少用‘先……再……’\n- 警惕‘像要……’\n- 配角先顾自己\n",
+        encoding="utf-8",
+    )
+    (temp_project.settings_dir / "写作风格.md").write_text(
+        "- 不要把信息写成死直线\n- 对白不能像台词稿\n- 少写不是……是……\n",
+        encoding="utf-8",
+    )
+    (temp_project.webnovel_dir / "preferences.json").write_text(
+        json.dumps(
+            {
+                "style": {
+                    "sequence_marker_policy": "少用先……再……模板",
+                    "xiang_virtualization_policy": "警惕像要、像在、像是",
+                    "dialogue_policy": "对白优先大白话",
+                    "information_flow_policy": "允许弱连接和非最优反应",
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    manager = ContextManager(temp_project)
+    payload = manager.build_context(4, use_snapshot=False, save_snapshot=False)
+
+    project_constraints = payload["sections"]["project_constraints"]["content"]
+    assert project_constraints.get("constraint_pack_version") == "v1"
+    assert project_constraints.get("constraint_pack_hash")
+    assert payload["meta"].get("constraint_pack_hash") == project_constraints.get("constraint_pack_hash")
+    assert isinstance(project_constraints.get("rules"), list)
+    assert len(project_constraints.get("rules") or []) >= 7
+    assert any(row.get("id") == "STYLE_SEQ_XIAN_TEMPLATE" for row in project_constraints.get("rules") or [])
+    assert any(row.get("id") == "STYLE_XIANG_VIRTUALIZATION" for row in project_constraints.get("rules") or [])
+    assert isinstance(project_constraints.get("chapter_style_targets"), list)
+    assert project_constraints.get("chapter_style_targets")
+    assert isinstance(project_constraints.get("chapter_positive_evidence_targets"), list)
+    assert project_constraints.get("chapter_positive_evidence_targets")
+
+
 def test_context_manager_includes_writing_guidance(temp_project):
     state = {
         "project": {"genre": "xuanhuan"},

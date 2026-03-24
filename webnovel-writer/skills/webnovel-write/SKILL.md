@@ -221,6 +221,7 @@ cat "${SKILL_ROOT}/references/step-3-review-gate.md"
 - `consistency-checker`
 - `continuity-checker`
 - `ooc-checker`
+- `project-style-checker`
 
 条件审查器（`auto` 命中时执行）：
 - `reader-pull-checker`
@@ -246,7 +247,7 @@ review_metrics 字段约束（当前工作流约定只传以下字段）：
   "severity_counts": {"critical": 0, "high": 1, "medium": 2, "low": 0},
   "critical_issues": ["问题描述"],
   "report_file": "审查报告/第100-100章审查报告.md",
-  "notes": "单个字符串；selected_checkers / timeline_gate / anti_ai_force_check 等扩展信息压成单行文本写入此字段"
+  "notes": "单个字符串；selected_checkers / timeline_gate / project_style_gate / constraint_pack_hash / anti_ai_force_check / project_style_force_check 等扩展信息压成单行文本写入此字段"
 }
 ```
 - `notes` 在当前执行契约中必须是单个字符串，不得传入对象或数组。
@@ -265,14 +266,16 @@ cat "${SKILL_ROOT}/references/writing/typesetting.md"
 ```
 
 执行顺序：
-1. 修复 `critical`（必须）
-2. 修复 `high`（不能修复则记录 deviation）
-3. 处理 `medium/low`（按收益择优）
-4. 执行 Anti-AI 与 No-Poison 全文终检（必须输出 `anti_ai_force_check: pass/fail`）
+1. 先修 `project-style-checker` 的 `hard_violations`
+2. 修复 `critical`（必须）
+3. 修复 `high`（不能修复则记录 deviation）
+4. 处理 `medium/low`（按收益择优）
+5. 执行 Anti-AI 与 No-Poison 全文终检（必须输出 `anti_ai_force_check: pass/fail`）
+6. 用同一版 `constraint_pack_hash` 复跑项目风格检查（必须输出 `project_style_force_check: pass/fail`）
 
 输出：
 - 润色后正文（覆盖章节文件）
-- 变更摘要（至少含：修复项、保留项、deviation、`anti_ai_force_check`）
+- 变更摘要（至少含：修复项、保留项、deviation、`anti_ai_force_check`、`project_style_force_check`、`constraint_repair_report`）
 
 ### Step 5：Data Agent（状态与索引回写）
 
@@ -283,6 +286,9 @@ cat "${SKILL_ROOT}/references/writing/typesetting.md"
 - `project_root`
 - `storage_path=.webnovel/`
 - `state_file=.webnovel/state.json`
+- `project_style_gate`
+- `project_style_force_check`
+- `constraint_pack_hash`
 
 Data Agent 默认子步骤（全部执行）：
 - A. 加载上下文
@@ -299,6 +305,14 @@ Data Agent 默认子步骤（全部执行）：
 1. 优先从 `index.db` 的 scenes 记录获取（Step F 写入的结果）
 2. 其次按 `start_line` / `end_line` 从正文切片构造
 3. 最后允许单场景退化（整章作为一个 scene）
+
+Step 5 前硬闸门：
+- `review_metrics` 已成功落库。
+- `anti_ai_force_check=pass`。
+- `project_style_force_check=pass`。
+- `project_style_gate.status != blocked`。
+- `constraint_pack_hash` 与 Step 1 / Step 3 / Step 4 保持一致；若中途变化，必须重跑 Step 1-4。
+- 任一条件不满足，禁止启动 Data Agent。
 
 Step 5 失败隔离规则：
 - 若 G/H 失败原因是 `--scenes` 缺失、scene 为空、scene JSON 格式错误：只补跑 G/H 子步骤，不回滚或重跑 Step 1-4。
@@ -343,8 +357,9 @@ git -c i18n.commitEncoding=UTF-8 commit -m "第{chapter_num}章: {title}"
 2. Step 3 已产出 `overall_score` 且 `review_metrics` 成功落库
 3. Step 4 已处理全部 `critical`，`high` 未修项有 deviation 记录
 4. Step 4 的 `anti_ai_force_check=pass`（基于全文检查；fail 时不得进入 Step 5）
-5. Step 5 已回写 `state.json`、`index.db`、`summaries/ch{chapter_padded}.md`
-6. 若开启性能观测，已读取最新 timing 记录并输出结论
+5. Step 4 的 `project_style_force_check=pass`，且 `unresolved_hard_violations=0`
+6. Step 5 已回写 `state.json`、`index.db`、`summaries/ch{chapter_padded}.md`
+7. 若开启性能观测，已读取最新 timing 记录并输出结论
 
 ## 验证与交付
 

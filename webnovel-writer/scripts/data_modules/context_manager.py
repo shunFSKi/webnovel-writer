@@ -5,6 +5,7 @@ ContextManager - assemble context packs with weighted priorities.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sys
@@ -59,6 +60,7 @@ class ContextManager:
         "reader_signal",
         "genre_profile",
         "writing_guidance",
+        "project_constraints",
     }
     SECTION_ORDER = [
         "core",
@@ -67,6 +69,7 @@ class ContextManager:
         "reader_signal",
         "genre_profile",
         "writing_guidance",
+        "project_constraints",
         "story_skeleton",
         "memory",
         "preferences",
@@ -220,6 +223,7 @@ class ContextManager:
 
         preferences = self._load_json_optional(self.config.webnovel_dir / "preferences.json")
         memory = self._load_json_optional(self.config.webnovel_dir / "project_memory.json")
+        project_constraint_pack = self._build_project_constraint_pack(preferences)
         story_skeleton = self._load_story_skeleton(chapter)
         alert_slice = max(0, int(self.config.context_alerts_slice))
         reader_signal = self._load_reader_signal(chapter)
@@ -227,13 +231,17 @@ class ContextManager:
         writing_guidance = self._build_writing_guidance(chapter, reader_signal, genre_profile)
 
         return {
-            "meta": {"chapter": chapter},
+            "meta": {
+                "chapter": chapter,
+                "constraint_pack_hash": project_constraint_pack.get("constraint_pack_hash", ""),
+            },
             "core": core,
             "scene": scene,
             "global": global_ctx,
             "reader_signal": reader_signal,
             "genre_profile": genre_profile,
             "writing_guidance": writing_guidance,
+            "project_constraints": project_constraint_pack,
             "story_skeleton": story_skeleton,
             "preferences": preferences,
             "memory": memory,
@@ -246,6 +254,244 @@ class ContextManager:
                 ),
             },
         }
+
+    def _build_project_constraint_pack(self, preferences: Dict[str, Any]) -> Dict[str, Any]:
+        style_contract_text = self._load_setting("风格契约")
+        writing_style_text = self._load_setting("写作风格")
+        style_preferences = preferences.get("style") if isinstance(preferences, dict) else {}
+
+        rule_specs = [
+            {
+                "id": "STYLE_SEQ_XIAN_TEMPLATE",
+                "category": "language",
+                "default_severity": "high",
+                "hard_or_soft": "hard",
+                "negative_signals": ["先……再……", "先……才……", "顺序提示词起手串动作"],
+                "positive_evidence_required": ["动作直接落地，不靠顺序提示词串联", "动作与反应自然衔接"],
+                "escalation_threshold": "同段重复出现或整章形成流程图感",
+                "override_allowed": False,
+                "repair_guidance": "改回直接动作链和现场反应，删除只负责挂顺序的‘先’模板。",
+                "source_refs": [
+                    "preferences.style.sequence_marker_policy",
+                    "风格契约:语言硬约束-顺序提示词",
+                    "写作风格:动作拆解-顺序提示词",
+                ],
+            },
+            {
+                "id": "STYLE_XIANG_VIRTUALIZATION",
+                "category": "language",
+                "default_severity": "high",
+                "hard_or_soft": "hard",
+                "negative_signals": ["像要……", "像在……", "像是……", "把能直接写的动作和判断又隔一层写虚"],
+                "positive_evidence_required": ["直接动作、物态、触感", "真有比喻价值或物态对照时才保留‘像’"],
+                "escalation_threshold": "连续出现或明显拖虚判断",
+                "override_allowed": False,
+                "repair_guidance": "把虚写套壳改回直接动作、物态和反应，只保留有真实比喻价值的‘像’。",
+                "source_refs": [
+                    "preferences.style.xiang_virtualization_policy",
+                    "风格契约:语言硬约束-像字虚写",
+                    "写作风格:动作拆解-像字虚写",
+                ],
+            },
+            {
+                "id": "STYLE_EXPLANATION_TRANSLATION",
+                "category": "narration",
+                "default_severity": "high",
+                "hard_or_soft": "hard",
+                "negative_signals": ["不是……是……", "其实……", "原来……", "解释腔", "盖章式判断"],
+                "positive_evidence_required": ["物证先于结论", "动作、停顿、旁人反应顶出判断"],
+                "escalation_threshold": "一句直接翻译场面或替读者做阅读理解",
+                "override_allowed": False,
+                "repair_guidance": "把解释句拆回动作、物证、停顿、岔念头和旁人反应，减少作者代读。",
+                "source_refs": [
+                    "preferences.style.exposition_policy",
+                    "preferences.style.judgment_policy",
+                    "风格契约:语言硬约束-解释型转折",
+                    "写作风格:执行层-去AI化",
+                ],
+            },
+            {
+                "id": "STYLE_DIALOGUE_STIFF",
+                "category": "dialogue",
+                "default_severity": "high",
+                "hard_or_soft": "hard",
+                "negative_signals": ["对白像台词稿", "播报句", "审查意见句", "只剩结论"],
+                "positive_evidence_required": ["顺话、接茬、怨气、找补、试探", "任意抽一句念出来像这个人真会说的话"],
+                "escalation_threshold": "关键对白成段发硬或整场只剩信息点",
+                "override_allowed": False,
+                "repair_guidance": "把对白改回身份化口气，保留口头顺话和自保意味，不写成播报或判词。",
+                "source_refs": [
+                    "preferences.style.dialogue_policy",
+                    "preferences.style.dialogue_read_aloud_rule",
+                    "风格契约:对话风格",
+                    "写作风格:对话风格",
+                ],
+            },
+            {
+                "id": "STYLE_SUPPORTING_CAST_TOOLIFIED",
+                "category": "character",
+                "default_severity": "medium",
+                "hard_or_soft": "soft",
+                "negative_signals": ["配角只做主角反应器", "众人统一口径反馈", "先主线后私心缺失"],
+                "positive_evidence_required": ["至少一个配角先顾自己的风险、面子、工钱或站位", "同一件事存在分层反馈"],
+                "escalation_threshold": "整场景配角都只围主角转",
+                "override_allowed": True,
+                "repair_guidance": "给配角补先顾自己的动作、回嘴或避责，再回到主线反馈。",
+                "source_refs": [
+                    "preferences.avoid[6]",
+                    "preferences.style.crowd_feedback_policy",
+                    "风格契约:必守原则-配角先顾自己",
+                    "写作风格:配角群像",
+                ],
+            },
+            {
+                "id": "STYLE_CAUSALITY_TOO_STRAIGHT",
+                "category": "structure",
+                "default_severity": "medium",
+                "hard_or_soft": "soft",
+                "negative_signals": [
+                    "发现异常→准确判断→继续推进→当场坐实",
+                    "信息死直线",
+                    "没有闲话、误听、打断、非最优反应",
+                ],
+                "positive_evidence_required": [
+                    "至少一处弱连接信息",
+                    "至少一处非最优反应或现场打断",
+                    "生活噪音介入后再并回主线",
+                ],
+                "escalation_threshold": "整章只按最优路径推进",
+                "override_allowed": True,
+                "repair_guidance": "在不拖节奏前提下补入弱连接、打断、误会、生活噪音和非最优动作。",
+                "source_refs": [
+                    "preferences.style.information_flow_policy",
+                    "风格契约:语言硬约束-主线推进以线性为主但不要死直线",
+                    "写作风格:叙事视角-信息投放",
+                ],
+            },
+            {
+                "id": "STYLE_TEMPLATE_WORD_CLUSTER",
+                "category": "language",
+                "default_severity": "medium",
+                "hard_or_soft": "soft",
+                "negative_signals": [
+                    "一下/这才/立刻/连忙 等过场词聚集",
+                    "就/又/可/真/压/横/落 等桥词或套壳字扎堆",
+                    "单字问题词成片出现",
+                ],
+                "positive_evidence_required": ["句子自然顺口，不靠桥词补筋骨", "动作和口气本身能完成节奏推进"],
+                "escalation_threshold": "局部词群扎堆导致明显 AI 模板感",
+                "override_allowed": True,
+                "repair_guidance": "不要逐字硬删，回到整句整段重写，把桥词套壳并回自然动作链。",
+                "source_refs": [
+                    "preferences.style.template_word_policy",
+                    "preferences.style.bridge_word_policy",
+                    "preferences.style.true_emphasis_policy",
+                    "风格契约:语言硬约束-问题词/桥词",
+                ],
+            },
+        ]
+
+        rules: List[Dict[str, Any]] = []
+        for spec in rule_specs:
+            source_snippets = self._collect_constraint_source_snippets(
+                rule_id=spec["id"],
+                preferences_style=style_preferences if isinstance(style_preferences, dict) else {},
+                style_contract_text=style_contract_text,
+                writing_style_text=writing_style_text,
+            )
+            rule = dict(spec)
+            rule["source_snippets"] = source_snippets
+            rules.append(rule)
+
+        chapter_style_targets = [
+            "正文自然顺嘴，避免解释腔和模板动作链。",
+            "至少保留 1-2 处长在身份与处境里的生活噪音。",
+            "至少 1 个配角先顾自己，再反馈主线。",
+            "主角判断不要一步到位，允许先动手、先挨压、再补全判断。",
+        ]
+        chapter_positive_evidence_targets = [
+            {"rule_id": "STYLE_CAUSALITY_TOO_STRAIGHT", "target": "至少 1 处弱连接信息或现场打断。"},
+            {"rule_id": "STYLE_SUPPORTING_CAST_TOOLIFIED", "target": "至少 1 个配角先露出私心、顾虑或站位。"},
+            {"rule_id": "STYLE_DIALOGUE_STIFF", "target": "至少 1 处对白保留顺话、接茬、怨气或找补。"},
+            {"rule_id": "STYLE_SEQ_XIAN_TEMPLATE", "target": "关键动作段直接推进，不靠‘先……再/才……’串联。"},
+        ]
+
+        source_refs = {
+            "preferences": ".webnovel/preferences.json",
+            "style_contract": "设定集/风格契约.md",
+            "writing_style": "设定集/写作风格.md",
+        }
+        hash_payload = {
+            "rules": rules,
+            "chapter_style_targets": chapter_style_targets,
+            "chapter_positive_evidence_targets": chapter_positive_evidence_targets,
+        }
+        constraint_pack_hash = hashlib.sha256(
+            json.dumps(hash_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+
+        return {
+            "constraint_pack_version": "v1",
+            "constraint_pack_hash": constraint_pack_hash,
+            "source_refs": source_refs,
+            "rules": rules,
+            "chapter_style_targets": chapter_style_targets,
+            "chapter_positive_evidence_targets": chapter_positive_evidence_targets,
+        }
+
+    def _collect_constraint_source_snippets(
+        self,
+        rule_id: str,
+        preferences_style: Dict[str, Any],
+        style_contract_text: str,
+        writing_style_text: str,
+    ) -> List[str]:
+        field_map = {
+            "STYLE_SEQ_XIAN_TEMPLATE": ["sequence_marker_policy"],
+            "STYLE_XIANG_VIRTUALIZATION": ["xiang_virtualization_policy"],
+            "STYLE_EXPLANATION_TRANSLATION": ["exposition_policy", "judgment_policy"],
+            "STYLE_DIALOGUE_STIFF": ["dialogue_policy", "dialogue_read_aloud_rule"],
+            "STYLE_SUPPORTING_CAST_TOOLIFIED": ["crowd_feedback_policy"],
+            "STYLE_CAUSALITY_TOO_STRAIGHT": ["information_flow_policy"],
+            "STYLE_TEMPLATE_WORD_CLUSTER": [
+                "template_word_policy",
+                "bridge_word_policy",
+                "true_emphasis_policy",
+                "ya_pressure_shell_policy",
+            ],
+        }
+        keyword_map = {
+            "STYLE_SEQ_XIAN_TEMPLATE": ["先……再……", "先……才……", "顺序提示词"],
+            "STYLE_XIANG_VIRTUALIZATION": ["像要", "像在", "像是", "像"],
+            "STYLE_EXPLANATION_TRANSLATION": ["不是……是……", "解释", "盖章式判断"],
+            "STYLE_DIALOGUE_STIFF": ["对白", "台词稿", "播报", "口试规则"],
+            "STYLE_SUPPORTING_CAST_TOOLIFIED": ["配角", "反应器", "分层反馈", "先顾自己"],
+            "STYLE_CAUSALITY_TOO_STRAIGHT": ["线性", "死直线", "弱连接", "非最优反应"],
+            "STYLE_TEMPLATE_WORD_CLUSTER": ["问题词", "桥词", "套壳", "一下", "就", "又", "可", "真"],
+        }
+
+        snippets: List[str] = []
+        for field_name in field_map.get(rule_id, []):
+            value = preferences_style.get(field_name)
+            if isinstance(value, str) and value.strip():
+                snippets.append(f"preferences:{field_name}={value.strip()[:160]}")
+
+        keywords = keyword_map.get(rule_id, [])
+        snippets.extend(self._extract_matching_lines(style_contract_text, keywords, prefix="风格契约"))
+        snippets.extend(self._extract_matching_lines(writing_style_text, keywords, prefix="写作风格"))
+        return snippets[:6]
+
+    def _extract_matching_lines(self, text: str, keywords: List[str], prefix: str) -> List[str]:
+        if not text:
+            return []
+        matches: List[str] = []
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if any(keyword and keyword in stripped for keyword in keywords):
+                matches.append(f"{prefix}:{stripped[:160]}")
+        return matches[:4]
 
     def _load_reader_signal(self, chapter: int) -> Dict[str, Any]:
         if not getattr(self.config, "context_reader_signal_enabled", True):

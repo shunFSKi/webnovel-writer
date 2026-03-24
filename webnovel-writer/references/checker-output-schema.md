@@ -44,8 +44,19 @@
 | `summary` | string | ✅ | 简短总结 |
 
 扩展字段约定（可选）：
-- 可附加 checker 私有字段（如 `hard_violations`、`soft_suggestions`、`override_eligible`）。
-- 私有字段用于增强解释，不用于替代 `issues`。
+- 可附加 checker 私有字段（如 `hard_violations`、`soft_suggestions`、`positive_evidence`、`missing_positive_evidence`、`override_eligible`、`backwrite_candidates`）。
+- 若 checker 需要输出流程级闸门，统一使用 `gate` 字段，不用自造顶层命名。
+- 私有字段与 `gate` 用于增强解释，不用于替代 `issues`。
+
+`gate` 推荐结构：
+```json
+{
+  "status": "pass|warn|blocked|override_required|recheck_required",
+  "reason": "简短说明",
+  "can_override": false,
+  "constraint_pack_hash": "sha256..."
+}
+```
 
 ## 问题严重度定义
 
@@ -151,6 +162,18 @@ Step 3 完成后，输出汇总 JSON：
   "chapter": 100,
   "checkers": {
     "reader-pull-checker": {"score": 85, "pass": true, "critical": 0, "high": 1},
+    "project-style-checker": {
+      "score": 72,
+      "pass": false,
+      "critical": 0,
+      "high": 2,
+      "gate": {
+        "status": "blocked",
+        "reason": "存在项目风格硬违规",
+        "can_override": false,
+        "constraint_pack_hash": "sha256..."
+      }
+    },
     "high-point-checker": {"score": 80, "pass": true, "critical": 0, "high": 0},
     "consistency-checker": {"score": 90, "pass": true, "critical": 0, "high": 0},
     "ooc-checker": {"score": 75, "pass": true, "critical": 0, "high": 1},
@@ -159,10 +182,17 @@ Step 3 完成后，输出汇总 JSON：
   },
   "overall": {
     "score": 82.5,
-    "pass": true,
+    "pass": false,
     "critical_total": 0,
-    "high_total": 2,
-    "can_proceed": true
+    "high_total": 4,
+    "can_proceed": false,
+    "timeline_gate": {"status": "pass", "reason": "无严重时间线问题"},
+    "project_style_gate": {
+      "status": "blocked",
+      "reason": "存在项目风格硬违规",
+      "can_override": false,
+      "constraint_pack_hash": "sha256..."
+    }
   }
 }
 ```

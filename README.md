@@ -736,7 +736,8 @@ python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" wor
 
 | 版本 | 说明 |
 |------|------|
-| **v5.5.5 (当前)** | 新增 /webnovel-study 整本拆书能力；补齐 study CLI 路由、缓存契约、调用矩阵与仓库命令文档。 |
+| **v5.5.6 (当前)** | 新增项目风格约束包、project-style-checker、Step 4 规则复检与 Step 5 硬闸门，确保写作流程真正阻断风格违规章节进入数据回写。 |
+| **v5.5.5** | 新增 /webnovel-study 整本拆书能力；补齐 study CLI 路由、缓存契约、调用矩阵与仓库命令文档。 |
 | **v5.5.4** | 补齐写作链提示词强约束（流程硬约束、中文思维写作约束、Step 职责边界）；统一中文化审查/润色/Agent 报告文案；清理文档内部版本号与版本历史，降低与插件发版版本混淆。 |
 | **v5.5.3** | 新增统一 `preflight` 预检命令；写作链 CLI 示例统一为 UTF-8 运行方式，收口文档中的长 shell 预检片段并降低 Windows 终端乱码风险。 |
 | **v5.5.2** | 支持将详细大纲中的章节名同步到正文文件名；修复 workflow_manager 在无参 find_project_root monkeypatch 下的兼容性问题。 |

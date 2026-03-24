@@ -26,7 +26,10 @@ model: inherit
   "review_score": 85,
   "project_root": "D:/wk/斗破苍穹",
   "storage_path": ".webnovel/",
-  "state_file": ".webnovel/state.json"
+  "state_file": ".webnovel/state.json",
+  "project_style_gate": {"status": "pass", "constraint_pack_hash": "sha256..."},
+  "project_style_force_check": "pass",
+  "constraint_pack_hash": "sha256..."
 }
 ```
 
@@ -37,6 +40,12 @@ model: inherit
 - state.json → 进度、配置、节奏追踪 + chapter_meta
 - vectors.db → RAG 向量 (SQLite)
 - summaries/ → 章节摘要文件
+
+**Step 5 前置硬校验（新增）**：
+- `project_style_gate.status` 不能是 `blocked`
+- `project_style_force_check` 必须为 `pass`
+- `constraint_pack_hash` 不得缺失，且需与 `project_style_gate.constraint_pack_hash` 一致
+- 任一不满足时立即阻断，拒绝写入 state/index/summary
 
 ## 输出
 

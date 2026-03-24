@@ -19,6 +19,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+
+STEP_5_GATE_BLOCK_REASONS = {
+    "workflow_task_missing": "无活动任务，不能执行 Step 5",
+    "review_metrics_missing": "review_metrics 未落库",
+    "anti_ai_force_check_failed": "anti_ai_force_check 未通过",
+    "project_style_force_check_failed": "project_style_force_check 未通过",
+    "project_style_gate_blocked": "project_style_gate 阻断",
+    "constraint_pack_hash_missing": "constraint_pack_hash 缺失",
+    "constraint_pack_hash_mismatch": "constraint_pack_hash 不一致",
+    "unresolved_hard_violations": "仍存在未解决的项目风格硬违规",
+}
+
 from chapter_paths import default_chapter_draft_path, find_chapter_file
 from project_locator import resolve_project_root
 from runtime_compat import enable_windows_utf8_stdio, normalize_windows_path
@@ -139,6 +151,53 @@ def step_allowed_before(command: str, step_id: str, completed_steps: list[Dict[s
     return all(prev in completed_ids for prev in required_before)
 
 
+def _normalize_gate_payload(raw_gate: Any) -> Dict[str, Any]:
+    if isinstance(raw_gate, dict):
+        return dict(raw_gate)
+    if isinstance(raw_gate, str) and raw_gate.strip():
+        return {"status": raw_gate.strip()}
+    return {}
+
+
+def _build_step_5_gate(artifacts: Dict[str, Any]) -> Dict[str, Any]:
+    artifacts = artifacts or {}
+    project_style_gate = _normalize_gate_payload(artifacts.get("project_style_gate"))
+    project_style_force_check = str(artifacts.get("project_style_force_check") or "").strip().lower()
+    anti_ai_force_check = str(artifacts.get("anti_ai_force_check") or "").strip().lower()
+    constraint_pack_hash = str(artifacts.get("constraint_pack_hash") or "").strip()
+    gate_hash = str(project_style_gate.get("constraint_pack_hash") or "").strip()
+    unresolved_hard_violations = int(artifacts.get("unresolved_hard_violations") or 0)
+    review_completed = bool(artifacts.get("review_completed"))
+
+    blocked_reasons = []
+    if not review_completed:
+        blocked_reasons.append("review_metrics_missing")
+    if anti_ai_force_check != "pass":
+        blocked_reasons.append("anti_ai_force_check_failed")
+    if project_style_force_check != "pass":
+        blocked_reasons.append("project_style_force_check_failed")
+    if project_style_gate.get("status") == "blocked":
+        blocked_reasons.append("project_style_gate_blocked")
+    if not constraint_pack_hash:
+        blocked_reasons.append("constraint_pack_hash_missing")
+    if constraint_pack_hash and gate_hash and constraint_pack_hash != gate_hash:
+        blocked_reasons.append("constraint_pack_hash_mismatch")
+    if unresolved_hard_violations > 0:
+        blocked_reasons.append("unresolved_hard_violations")
+
+    return {
+        "status": "blocked" if blocked_reasons else "pass",
+        "blocked_reasons": blocked_reasons,
+        "reason_messages": [STEP_5_GATE_BLOCK_REASONS.get(code, code) for code in blocked_reasons],
+        "project_style_gate": project_style_gate,
+        "project_style_force_check": project_style_force_check or None,
+        "anti_ai_force_check": anti_ai_force_check or None,
+        "constraint_pack_hash": constraint_pack_hash or gate_hash,
+        "unresolved_hard_violations": unresolved_hard_violations,
+        "review_completed": review_completed,
+    }
+
+
 def _new_task(command: str, args: Dict[str, Any]) -> Dict[str, Any]:
     started_at = now_iso()
     return {
@@ -158,6 +217,13 @@ def _new_task(command: str, args: Dict[str, Any]) -> Dict[str, Any]:
             "state_json_modified": False,
             "entities_appeared": False,
             "review_completed": False,
+            "timeline_gate": {},
+            "project_style_gate": {},
+            "project_style_force_check": None,
+            "anti_ai_force_check": None,
+            "constraint_pack_hash": "",
+            "unresolved_hard_violations": 0,
+            "step5_gate": {},
         },
     }
 
@@ -236,6 +302,23 @@ def start_step(step_id, step_name, progress_note=None):
 
     owner = expected_step_owner(command, step_id)
 
+    if step_id == "Step 5":
+        step5_gate = _build_step_5_gate(task.get("artifacts", {}))
+        task.setdefault("artifacts", {})["step5_gate"] = step5_gate
+        if step5_gate.get("status") == "blocked":
+            save_state(state)
+            safe_append_call_trace(
+                "step5_gate_blocked",
+                {
+                    "command": command,
+                    "chapter": task.get("args", {}).get("chapter_num"),
+                    "blocked_reasons": step5_gate.get("blocked_reasons", []),
+                    "constraint_pack_hash": step5_gate.get("constraint_pack_hash"),
+                },
+            )
+            print("⚠️ Step 5 已被硬闸门阻断: " + "；".join(step5_gate.get("reason_messages", [])))
+            return
+
     _finalize_current_step_as_failed(task, reason="step_replaced_before_completion")
 
     started_at = now_iso()
@@ -298,6 +381,11 @@ def complete_step(step_id, artifacts_json=None):
             task["artifacts"].update(artifacts)
         except json.JSONDecodeError as exc:
             print(f"⚠️ Artifacts JSON 解析失败: {exc}")
+
+    if step_id == "Step 3":
+        task["artifacts"]["step5_gate"] = _build_step_5_gate(task.get("artifacts", {}))
+    elif step_id == "Step 4":
+        task["artifacts"]["step5_gate"] = _build_step_5_gate(task.get("artifacts", {}))
 
     task["completed_steps"].append(current_step)
     task["current_step"] = None
@@ -487,14 +575,7 @@ def analyze_recovery_options(interrupt_info):
                 "risk": "medium",
                 "description": "重新调用审查员并生成报告",
                 "actions": ["重新执行审查", "生成审查报告", "继续 Step 4 润色"],
-            },
-            {
-                "option": "B",
-                "label": "跳过审查直接润色",
-                "risk": "low",
-                "description": "后续可用 /webnovel-review 补审",
-                "actions": ["标记审查已跳过", "继续 Step 4 润色"],
-            },
+            }
         ]
 
     if step_id == "Step 4":
@@ -525,6 +606,21 @@ def analyze_recovery_options(interrupt_info):
         ]
 
     if step_id == "Step 5":
+        step5_gate = _build_step_5_gate(interrupt_info.get("artifacts", {}))
+        if step5_gate.get("status") == "blocked":
+            return [
+                {
+                    "option": "A",
+                    "label": "回到 Step 4 修复",
+                    "risk": "low",
+                    "description": "先补齐 Step 5 前硬闸门，再重新启动 Data Agent",
+                    "actions": [
+                        "修复 Step 4 产物中的风格/Anti-AI 问题",
+                        "确保 review_metrics、project_style_force_check、constraint_pack_hash 齐全",
+                        "重新启动 Step 5",
+                    ],
+                }
+            ]
         return [
             {
                 "option": "A",
@@ -687,6 +783,22 @@ def fail_current_task(reason: str = "manual_fail"):
     print(f"⚠️ 任务已标记失败: {reason}")
 
 
+def validate_step5_gate(artifacts_override: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    state = load_state()
+    task = state.get("current_task")
+    artifacts: Dict[str, Any] = {}
+    if task:
+        artifacts.update(task.get("artifacts", {}))
+    if artifacts_override:
+        artifacts.update(artifacts_override)
+    gate = _build_step_5_gate(artifacts)
+    if not task and not artifacts_override:
+        gate["status"] = "blocked"
+        gate["blocked_reasons"] = ["workflow_task_missing"]
+        gate["reason_messages"] = [STEP_5_GATE_BLOCK_REASONS["workflow_task_missing"]]
+    return gate
+
+
 def load_state():
     """Load workflow state."""
     state_file = get_workflow_state_path()
@@ -723,11 +835,13 @@ def get_pending_steps(command):
 
 def extract_stable_state(task):
     """Extract stable state snapshot."""
+    artifacts = task.get("artifacts", {})
+    artifacts["step5_gate"] = _build_step_5_gate(artifacts)
     return {
         "command": task["command"],
         "chapter_num": task["args"].get("chapter_num"),
         "completed_at": task.get("completed_at"),
-        "artifacts": task.get("artifacts", {}),
+        "artifacts": artifacts,
     }
 
 
@@ -773,6 +887,10 @@ if __name__ == "__main__":
     p_detect = subparsers.add_parser("detect", help="检测中断")
     add_project_root_arg(p_detect)
 
+    p_validate_step5 = subparsers.add_parser("validate-step5-gate", help="校验 Step 5 硬闸门")
+    add_project_root_arg(p_validate_step5)
+    p_validate_step5.add_argument("--artifacts", help="附加 Artifacts JSON，用于覆盖当前 workflow 中的字段")
+
     p_cleanup = subparsers.add_parser("cleanup", help="清理 artifacts")
     add_project_root_arg(p_cleanup)
     p_cleanup.add_argument("--chapter", type=int, required=True, help="章节号")
@@ -808,6 +926,18 @@ if __name__ == "__main__":
             print(json.dumps(options, ensure_ascii=False, indent=2))
         else:
             print("✅ 无中断任务")
+    elif args.action == "validate-step5-gate":
+        artifacts_override = None
+        if args.artifacts:
+            try:
+                artifacts_override = json.loads(args.artifacts)
+            except json.JSONDecodeError as exc:
+                print(f"⚠️ Artifacts JSON 解析失败: {exc}")
+                raise SystemExit(2)
+        gate = validate_step5_gate(artifacts_override)
+        print(json.dumps(gate, ensure_ascii=False, indent=2))
+        if gate.get("status") == "blocked":
+            raise SystemExit(1)
     elif args.action == "cleanup":
         cleaned = cleanup_artifacts(args.chapter, confirm=args.confirm)
         if args.confirm:

@@ -7,7 +7,7 @@ Features:
 - chapter outline snippet
 - previous chapter summaries (prefers .webnovel/summaries)
 - compact state summary
-- ContextManager contract sections (reader_signal / genre_profile / writing_guidance)
+- ContextManager contract sections (reader_signal / genre_profile / writing_guidance / project_constraints)
 """
 
 from __future__ import annotations
@@ -311,9 +311,13 @@ def _load_contract_context(project_root: Path, chapter_num: int) -> Dict[str, An
     return {
         "context_contract_version": (payload.get("meta") or {}).get("context_contract_version"),
         "context_weight_stage": (payload.get("meta") or {}).get("context_weight_stage"),
+        "constraint_pack_hash": (payload.get("meta") or {}).get("constraint_pack_hash"),
         "reader_signal": (sections.get("reader_signal") or {}).get("content", {}),
         "genre_profile": (sections.get("genre_profile") or {}).get("content", {}),
         "writing_guidance": (sections.get("writing_guidance") or {}).get("content", {}),
+        "project_constraint_pack": (sections.get("project_constraints") or {}).get("content", {}),
+        "chapter_style_targets": ((sections.get("project_constraints") or {}).get("content", {}) or {}).get("chapter_style_targets", []),
+        "chapter_positive_evidence_targets": ((sections.get("project_constraints") or {}).get("content", {}) or {}).get("chapter_positive_evidence_targets", []),
     }
 
 
@@ -337,9 +341,13 @@ def build_chapter_context_payload(project_root: Path, chapter_num: int) -> Dict[
         "state_summary": state_summary,
         "context_contract_version": contract_context.get("context_contract_version"),
         "context_weight_stage": contract_context.get("context_weight_stage"),
+        "constraint_pack_hash": contract_context.get("constraint_pack_hash"),
         "reader_signal": contract_context.get("reader_signal", {}),
         "genre_profile": contract_context.get("genre_profile", {}),
         "writing_guidance": contract_context.get("writing_guidance", {}),
+        "project_constraint_pack": contract_context.get("project_constraint_pack", {}),
+        "chapter_style_targets": contract_context.get("chapter_style_targets", []),
+        "chapter_positive_evidence_targets": contract_context.get("chapter_positive_evidence_targets", []),
         "rag_assist": rag_assist,
     }
 
@@ -480,6 +488,36 @@ def _render_text(payload: Dict[str, Any]) -> str:
         refs = genre_profile.get("reference_hints") or []
         for row in refs[:3]:
             lines.append(f"- {row}")
+        lines.append("")
+
+    project_constraint_pack = payload.get("project_constraint_pack") or {}
+    chapter_style_targets = payload.get("chapter_style_targets") or []
+    chapter_positive_evidence_targets = payload.get("chapter_positive_evidence_targets") or []
+    if project_constraint_pack or chapter_style_targets or chapter_positive_evidence_targets:
+        lines.append("## 项目风格约束")
+        lines.append("")
+        pack_hash = payload.get("constraint_pack_hash") or project_constraint_pack.get("constraint_pack_hash")
+        if pack_hash:
+            lines.append(f"- 约束包哈希: {pack_hash}")
+        rules = project_constraint_pack.get("rules") or []
+        if rules:
+            hard_count = sum(1 for row in rules if isinstance(row, dict) and row.get("hard_or_soft") == "hard")
+            lines.append(f"- 规则数: {len(rules)}（hard={hard_count}）")
+        if chapter_style_targets:
+            lines.append("")
+            lines.append("### 本章风格目标")
+            lines.append("")
+            for idx, item in enumerate(chapter_style_targets, start=1):
+                lines.append(f"{idx}. {item}")
+        if chapter_positive_evidence_targets:
+            lines.append("")
+            lines.append("### 本章正向证据目标")
+            lines.append("")
+            for idx, row in enumerate(chapter_positive_evidence_targets, start=1):
+                if isinstance(row, dict):
+                    lines.append(f"{idx}. [{row.get('rule_id')}] {row.get('target')}")
+                else:
+                    lines.append(f"{idx}. {row}")
         lines.append("")
 
     rag_assist = payload.get("rag_assist") or {}

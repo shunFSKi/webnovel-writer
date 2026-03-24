@@ -202,3 +202,121 @@ def test_cleanup_artifacts_confirm_deletes_with_backup(tmp_path, monkeypatch):
     backup_dir = tmp_path / ".webnovel" / "recovery_backups"
     backups = list(backup_dir.glob("ch0008-*"))
     assert backups
+
+
+def test_start_step_blocks_step5_when_force_checks_fail(tmp_path, monkeypatch):
+    module = _load_module()
+    monkeypatch.setattr(module, "find_project_root", lambda: tmp_path)
+
+    (tmp_path / ".webnovel").mkdir(parents=True, exist_ok=True)
+
+    module.start_task("webnovel-write", {"chapter_num": 21})
+    module.start_step("Step 4", "Polish")
+    module.complete_step(
+        "Step 4",
+        json.dumps(
+            {
+                "review_completed": True,
+                "anti_ai_force_check": "pass",
+                "project_style_force_check": "fail",
+                "project_style_gate": {"status": "blocked", "constraint_pack_hash": "abc123"},
+                "constraint_pack_hash": "abc123",
+                "unresolved_hard_violations": 1,
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+    module.start_step("Step 5", "Data Agent")
+
+    state = module.load_state()
+    task = state["current_task"]
+    assert task["current_step"] is None
+    step5_gate = task["artifacts"]["step5_gate"]
+    assert step5_gate["status"] == "blocked"
+    assert "project_style_force_check_failed" in step5_gate["blocked_reasons"]
+    assert "project_style_gate_blocked" in step5_gate["blocked_reasons"]
+    assert "unresolved_hard_violations" in step5_gate["blocked_reasons"]
+
+    trace_path = module.get_call_trace_path()
+    events = [json.loads(line)["event"] for line in trace_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert "step5_gate_blocked" in events
+
+
+def test_start_step_allows_step5_when_force_checks_pass(tmp_path, monkeypatch):
+    module = _load_module()
+    monkeypatch.setattr(module, "find_project_root", lambda: tmp_path)
+
+    (tmp_path / ".webnovel").mkdir(parents=True, exist_ok=True)
+
+    module.start_task("webnovel-write", {"chapter_num": 22})
+    module.start_step("Step 4", "Polish")
+    module.complete_step(
+        "Step 4",
+        json.dumps(
+            {
+                "review_completed": True,
+                "anti_ai_force_check": "pass",
+                "project_style_force_check": "pass",
+                "project_style_gate": {"status": "pass", "constraint_pack_hash": "abc123"},
+                "constraint_pack_hash": "abc123",
+                "unresolved_hard_violations": 0,
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+    module.start_step("Step 5", "Data Agent")
+
+    state = module.load_state()
+    task = state["current_task"]
+    assert task["current_step"] is not None
+    assert task["current_step"]["id"] == "Step 5"
+    assert task["artifacts"]["step5_gate"]["status"] == "pass"
+
+
+def test_analyze_recovery_options_removes_skip_review_path(tmp_path, monkeypatch):
+    module = _load_module()
+    monkeypatch.setattr(module, "find_project_root", lambda: tmp_path)
+
+    options = module.analyze_recovery_options(
+        {
+            "command": "webnovel-write",
+            "args": {"chapter_num": 23},
+            "current_step": {"id": "Step 3"},
+            "artifacts": {},
+        }
+    )
+
+    labels = [row["label"] for row in options]
+    assert labels == ["重新执行审查"]
+
+
+def test_validate_step5_gate_blocks_without_active_task(tmp_path, monkeypatch):
+    module = _load_module()
+    monkeypatch.setattr(module, "find_project_root", lambda: tmp_path)
+
+    (tmp_path / ".webnovel").mkdir(parents=True, exist_ok=True)
+
+    gate = module.validate_step5_gate()
+    assert gate["status"] == "blocked"
+    assert gate["blocked_reasons"] == ["workflow_task_missing"]
+
+
+def test_validate_step5_gate_accepts_artifacts_override(tmp_path, monkeypatch):
+    module = _load_module()
+    monkeypatch.setattr(module, "find_project_root", lambda: tmp_path)
+
+    (tmp_path / ".webnovel").mkdir(parents=True, exist_ok=True)
+
+    gate = module.validate_step5_gate(
+        {
+            "review_completed": True,
+            "anti_ai_force_check": "pass",
+            "project_style_force_check": "pass",
+            "project_style_gate": {"status": "pass", "constraint_pack_hash": "abc123"},
+            "constraint_pack_hash": "abc123",
+            "unresolved_hard_violations": 0,
+        }
+    )
+    assert gate["status"] == "pass"
