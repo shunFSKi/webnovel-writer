@@ -5,14 +5,20 @@
 
 从项目的 参考拆书/ 目录中提取文笔风格信息，
 综合分析多本参考书的写作特点，整合成适合当前项目的风格指南。
+
+支持策略同步：
+- append: 追加模式 - 在现有内容后添加新内容
+- merge: 合并模式 - 智能合并现有和新内容
+- replace: 替换模式 - 完全替换特定章节
 """
 
 import os
 import re
 import json
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from collections import defaultdict
+from datetime import datetime
 
 
 class StyleSynthesizer:
@@ -22,6 +28,11 @@ class StyleSynthesizer:
         self.project_root = Path(project_root)
         self.source_dir = self.project_root / source_dir
         self.output_file = self.project_root / "设定集" / "参考拆书综合风格指南.md"
+
+        # 目标文件路径
+        self.preferences_file = self.project_root / ".webnovel" / "preferences.json"
+        self.writing_style_file = self.project_root / "设定集" / "写作风格.md"
+        self.style_contract_file = self.project_root / "设定集" / "风格契约.md"
 
         # 存储所有拆书数据
         self.style_data: Dict[str, Dict] = {}
@@ -138,7 +149,7 @@ class StyleSynthesizer:
         # 从02_人物特点提取特征
         if data["character_features"]:
             # 提取主角特点
-            protagonist_section = re.search(r'## 主角.*?(?=\n##|\Z)', data["plot_structure"], re.DOTALL)
+            protagonist_section = re.search(r'## 主角.*?(?=\n##|\Z)', data["character_features"], re.DOTALL)
             if protagonist_section:
                 # 提取核心卖点
                 selling_points = re.findall(r'核心卖点|卖点|特点.*?[:：]\s*([^\n]+)', data["character_features"])
@@ -226,6 +237,7 @@ class StyleSynthesizer:
         # 标题
         lines.append("# 参考拆书综合风格指南\n")
         lines.append("> 本文件由 `webnovel-style-synth` 自动生成，综合分析了项目中所有参考拆书的文笔风格。\n")
+        lines.append(f"> 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         lines.append("---\n")
 
         # 参考书目
@@ -529,7 +541,256 @@ class StyleSynthesizer:
 
         print(f"\n风格指南已生成: {self.output_file}")
 
-    def run(self) -> None:
+    # ========== 策略同步功能 ==========
+
+    def sync_to_preferences(self, strategy: str = "merge") -> None:
+        """同步到 .webnovel/preferences.json"""
+        print(f"\n同步到 .webnovel/preferences.json (策略: {strategy})")
+
+        # 读取现有配置
+        existing_prefs = {}
+        if self.preferences_file.exists():
+            with open(self.preferences_file, 'r', encoding='utf-8') as f:
+                existing_prefs = json.load(f)
+
+        # 生成新的风格配置
+        new_prefs = self._generate_preferences_content()
+
+        if strategy == "replace":
+            # 替换模式：完全替换风格相关字段
+            merged_prefs = {**existing_prefs, **new_prefs}
+        elif strategy == "append":
+            # 追加模式：保留现有，追加新字段
+            merged_prefs = existing_prefs.copy()
+            for key, value in new_prefs.items():
+                if key not in merged_prefs:
+                    merged_prefs[key] = value
+                else:
+                    # 对于嵌套字段，进行追加
+                    if isinstance(value, dict) and isinstance(merged_prefs.get(key), dict):
+                        merged_prefs[key].update(value)
+        else:  # merge
+            # 合并模式：智能合并
+            merged_prefs = self._merge_preferences(existing_prefs, new_prefs)
+
+        # 保存
+        self.preferences_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.preferences_file, 'w', encoding='utf-8') as f:
+            json.dump(merged_prefs, f, ensure_ascii=False, indent=2)
+
+        print(f"✓ 已同步到 {self.preferences_file}")
+
+    def sync_to_writing_style(self, strategy: str = "append") -> None:
+        """同步到 设定集/写作风格.md"""
+        print(f"\n同步到 设定集/写作风格.md (策略: {strategy})")
+
+        # 生成新的风格内容
+        new_content = self._generate_writing_style_content()
+
+        if not self.writing_style_file.exists():
+            # 文件不存在，直接创建
+            with open(self.writing_style_file, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+            print(f"✓ 已创建 {self.writing_style_file}")
+            return
+
+        # 读取现有内容
+        with open(self.writing_style_file, 'r', encoding='utf-8') as f:
+            existing_content = f.read()
+
+        if strategy == "replace":
+            # 替换模式：完全替换
+            final_content = new_content
+        elif strategy == "append":
+            # 追加模式：在现有内容后追加
+            final_content = existing_content + "\n\n" + new_content
+        else:  # merge
+            # 合并模式：智能合并（这里简化为追加，保留原有）
+            final_content = existing_content + "\n\n" + new_content
+
+        # 保存
+        with open(self.writing_style_file, 'w', encoding='utf-8') as f:
+            f.write(final_content)
+
+        print(f"✓ 已同步到 {self.writing_style_file}")
+
+    def sync_to_style_contract(self, strategy: str = "replace") -> None:
+        """同步到 设定集/风格契约.md"""
+        print(f"\n同步到 设定集/风格契约.md (策略: {strategy})")
+
+        # 生成新的契约内容
+        new_content = self._generate_style_contract_content()
+
+        if not self.style_contract_file.exists():
+            # 文件不存在，直接创建
+            with open(self.style_contract_file, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+            print(f"✓ 已创建 {self.style_contract_file}")
+            return
+
+        # 读取现有内容
+        with open(self.style_contract_file, 'r', encoding='utf-8') as f:
+            existing_content = f.read()
+
+        if strategy == "replace":
+            # 替换模式：完全替换
+            final_content = new_content
+        elif strategy == "append":
+            # 追加模式：在现有内容后追加
+            final_content = existing_content + "\n\n" + new_content
+        else:  # merge
+            # 合并模式：保留现有，在指定位置插入
+            # 这里简化为追加，保留原有内容
+            final_content = existing_content + "\n\n" + new_content
+
+        # 保存
+        with open(self.style_contract_file, 'w', encoding='utf-8') as f:
+            f.write(final_content)
+
+        print(f"✓ 已同步到 {self.style_contract_file}")
+
+    def _generate_preferences_content(self) -> Dict:
+        """生成 preferences.json 内容"""
+        # 统计共性特征
+        pattern_count = defaultdict(int)
+        for data in self.style_data.values():
+            for pattern in data["features"].get("patterns", []):
+                pattern_count[pattern] += 1
+
+        # 统计句长
+        all_sentence_lengths = []
+        for data in self.style_data.values():
+            all_sentence_lengths.extend(data["features"].get("sentence_length", []))
+
+        # 统计对白占比
+        dialogue_ratios = []
+        for data in self.style_data.values():
+            dialogue_ratios.extend(data["features"].get("dialogue_ratio", []))
+
+        return {
+            "tone": "基于参考拆书综合分析",
+            "style": {
+                "sentence_rhythm": f"参考句长范围: {'、'.join(set(all_sentence_lengths))}字" if all_sentence_lengths else "自然节奏",
+                "dialogue_ratio_avg": f"{sum(map(int, dialogue_ratios)) // len(dialogue_ratios)}%" if dialogue_ratios else "待统计",
+                "common_patterns": [p for p, c in pattern_count.items() if c >= 2]
+            },
+            "source": "webnovel-style-synth 自动生成",
+            "generated_at": datetime.now().isoformat()
+        }
+
+    def _merge_preferences(self, existing: Dict, new: Dict) -> Dict:
+        """合并 preferences 配置"""
+        merged = existing.copy()
+
+        # 合并 style 字段
+        if "style" in new:
+            if "style" not in merged:
+                merged["style"] = {}
+            merged["style"].update(new["style"])
+
+        # 保留其他新字段
+        for key, value in new.items():
+            if key not in merged:
+                merged[key] = value
+
+        return merged
+
+    def _generate_writing_style_content(self) -> str:
+        """生成写作风格内容"""
+        lines = []
+
+        lines.append("## 参考拆书综合风格补充\n")
+        lines.append(f"> 本节由 `webnovel-style-synth` 自动生成，基于 {len(self.style_data)} 本参考拆书的综合分析。\n")
+        lines.append(f"> 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        lines.append("---\n")
+
+        # 统计共性特征
+        pattern_count = defaultdict(int)
+        for data in self.style_data.values():
+            for pattern in data["features"].get("patterns", []):
+                pattern_count[pattern] += 1
+
+        lines.append("### 共性风格特征\n")
+        if pattern_count:
+            lines.append("**高频特征** (出现2次以上):\n")
+            for pattern, count in sorted(pattern_count.items(), key=lambda x: -x[1]):
+                if count >= 2:
+                    lines.append(f"- {pattern}: {count}本拆书")
+            lines.append("")
+
+        # 题材特点
+        lines.append("### 题材与类型特点\n")
+        type_count = defaultdict(int)
+        genre_count = defaultdict(int)
+        for data in self.style_data.values():
+            for t in data["features"].get("type", []):
+                type_count[t] += 1
+            for g in data["features"].get("genre", []):
+                genre_count[g] += 1
+
+        if type_count:
+            lines.append("**主要类型**:\n")
+            for t, count in sorted(type_count.items(), key=lambda x: -x[1]):
+                lines.append(f"- {t}: {count}本")
+            lines.append("")
+
+        if genre_count:
+            lines.append("**主要题材**:\n")
+            for g, count in sorted(genre_count.items(), key=lambda x: -x[1]):
+                lines.append(f"- {g}: {count}本")
+            lines.append("")
+
+        # 句式建议
+        lines.append("### 句式建议\n")
+        lines.append("- 句子长短服从自然口气，不机械切短也不故意拉长")
+        lines.append("- 判断标准：念出来是否顺口")
+        lines.append("- 区分'自然短句'（15-30字，有停顿感）和'碎句'（5字内超短句连续3个以上）")
+        lines.append("- 允许自然短句存在，只有后者才需要合并\n")
+
+        # 对白建议
+        lines.append("### 对白建议\n")
+        lines.append("- 对话要推动剧情，不要为了对话而对话")
+        lines.append("- 每句对话都应该有目的：试探、施压、回避、诱导等")
+        lines.append("- 允许自然口语，不必过于书面化")
+        lines.append("- 不同身份的人要有不同口气\n")
+
+        return "\n".join(lines)
+
+    def _generate_style_contract_content(self) -> str:
+        """生成风格契约内容"""
+        lines = []
+
+        lines.append("## 参考拆书风格约束补充\n")
+        lines.append(f"> 本节由 `webnovel-style-synth` 自动生成，基于 {len(self.style_data)} 本参考拆书的综合分析。\n")
+        lines.append(f"> 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        lines.append("---\n")
+
+        # 统计特征
+        pattern_count = defaultdict(int)
+        for data in self.style_data.values():
+            for pattern in data["features"].get("patterns", []):
+                pattern_count[pattern] += 1
+
+        lines.append("### 参考拆书共性约束\n")
+        if pattern_count:
+            lines.append("**高频特征**:\n")
+            for pattern, count in sorted(pattern_count.items(), key=lambda x: -x[1]):
+                if count >= 2:
+                    lines.append(f"- **{pattern}**: {count}本拆书推荐")
+            lines.append("")
+
+        lines.append("### 基于参考拆书的硬约束\n")
+        lines.append("- 句子长短服从自然口气，不机械切短也不故意拉长")
+        lines.append("- 动作描写要具体，避免笼统描述")
+        lines.append("- 用动作暗示心理和情绪")
+        lines.append("- 对话要推动剧情，不要为了对话而对话")
+        lines.append("- 不同身份的人要有不同口气")
+        lines.append("- 避免机械的三段式结构（首先、其次、最后）")
+        lines.append("- 避免过度修饰，多用动词少用形容词\n")
+
+        return "\n".join(lines)
+
+    def run(self, strategy: str = "none", target: str = "none") -> None:
         """执行完整的分析流程"""
         print("开始分析参考拆书...")
 
@@ -537,8 +798,16 @@ class StyleSynthesizer:
 
         print("\n生成风格指南...")
         guide_content = self.generate_guide()
-
         self.save_guide(guide_content)
+
+        # 策略同步
+        if target != "none":
+            if target in ["preferences", "all"]:
+                self.sync_to_preferences(strategy)
+            if target in ["style", "all"]:
+                self.sync_to_writing_style(strategy)
+            if target in ["contract", "all"]:
+                self.sync_to_style_contract(strategy)
 
         print("\n完成!")
 
@@ -546,9 +815,42 @@ class StyleSynthesizer:
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="参考拆书风格综合指南生成器")
+    parser = argparse.ArgumentParser(
+        description="参考拆书风格综合指南生成器",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+策略说明:
+  append   追加模式 - 在现有内容后添加新内容
+  merge    合并模式 - 智能合并现有和新内容
+  replace  替换模式 - 完全替换特定章节
+
+目标说明:
+  preferences  同步到 .webnovel/preferences.json
+  style        同步到 设定集/写作风格.md
+  contract     同步到 设定集/风格契约.md
+  all          同步到所有文件
+
+示例:
+  # 只生成风格指南
+  python3 synth_style_guide.py --project-root .
+
+  # 追加到写作风格
+  python3 synth_style_guide.py --project-root . --strategy append --target style
+
+  # 合并到所有文件
+  python3 synth_style_guide.py --project-root . --strategy merge --target all
+
+  # 替换风格契约
+  python3 synth_style_guide.py --project-root . --strategy replace --target contract
+        """
+    )
+
     parser.add_argument("--project-root", default=".", help="项目根目录")
     parser.add_argument("--source-dir", default="参考拆书", help="拆书目录名称")
+    parser.add_argument("--strategy", choices=["append", "merge", "replace", "none"], default="none",
+                        help="同步策略 (默认: none 不进行同步)")
+    parser.add_argument("--target", choices=["preferences", "style", "contract", "all"], default="none",
+                        help="同步目标 (默认: none 不进行同步)")
 
     args = parser.parse_args()
 
@@ -557,7 +859,7 @@ def main():
         source_dir=args.source_dir
     )
 
-    synthesizer.run()
+    synthesizer.run(strategy=args.strategy, target=args.target)
 
 
 if __name__ == "__main__":
