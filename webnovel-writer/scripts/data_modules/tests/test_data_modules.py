@@ -42,6 +42,21 @@ def temp_project():
     with tempfile.TemporaryDirectory() as tmpdir:
         config = DataModulesConfig.from_project_root(tmpdir)
         config.ensure_dirs()
+        config.state_file.write_text(
+            json.dumps(
+                {
+                    "project_info": {"title": "测试项目", "genre": "测试", "created_at": "2026-01-01"},
+                    "progress": {"current_chapter": 0, "total_words": 0},
+                    "protagonist_state": {},
+                    "plot_threads": {"active_threads": [], "foreshadowing": []},
+                    "strand_tracker": {"current_dominant": "quest", "history": []},
+                    "chapter_meta": {},
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
         yield config
 
 
@@ -621,6 +636,33 @@ class TestIndexManager:
         assert stats["chapters"] == 1
         assert stats["scenes"] == 1
         assert stats["appearances"] == 1
+        chapter = manager.get_chapter(10)
+        assert chapter is not None
+        assert chapter["location"] == "秘境"
+        scenes_after = manager.get_scenes(10)
+        assert len(scenes_after) == 1
+        assert scenes_after[0]["summary"] == "开场"
+
+        overwrite_stats = manager.process_chapter_data(
+            chapter=10,
+            title="试炼后段",
+            location="秘境深处",
+            word_count=1800,
+            entities=[{"id": "xiaoyan", "type": "角色", "mentions": ["萧炎", "他"]}],
+            scenes=[
+                {"index": 1, "start_line": 1, "end_line": 30, "location": "秘境入口", "summary": "重整", "characters": ["xiaoyan"]},
+                {"index": 2, "start_line": 31, "end_line": 80, "location": "秘境深处", "summary": "遭遇强敌", "characters": ["xiaoyan", "yaolao"]},
+            ],
+        )
+        assert overwrite_stats["chapters"] == 1
+        assert overwrite_stats["scenes"] == 2
+        updated_chapter = manager.get_chapter(10)
+        assert updated_chapter["title"] == "试炼后段"
+        assert updated_chapter["location"] == "秘境深处"
+        updated_scenes = manager.get_scenes(10)
+        assert len(updated_scenes) == 2
+        assert updated_scenes[0]["summary"] == "重整"
+        assert updated_scenes[1]["summary"] == "遭遇强敌"
 
     def test_debt_and_override_flow(self, temp_project):
         manager = IndexManager(temp_project)
@@ -776,6 +818,11 @@ class TestIndexManager:
 
         recent = manager.get_recent_reading_power(limit=2)
         assert len(recent) == 2
+        assert recent[0]["chapter"] == 2
+
+        record2 = manager.get_chapter_reading_power(2)
+        assert record2 is not None
+        assert record2["hook_type"] == "悬念钩"
 
         pattern_stats = manager.get_pattern_usage_stats(last_n_chapters=5)
         assert pattern_stats.get("身份掉马") == 2
@@ -1069,6 +1116,7 @@ class TestIndexManager:
         run_cli(["--project-root", root, "recent-appearances", "--limit", "5"])
         run_cli(["--project-root", root, "entity-appearances", "--entity", "xiaoyan", "--limit", "5"])
         run_cli(["--project-root", root, "search-scenes", "--location", "天云宗", "--limit", "5"])
+        capsys.readouterr()
 
         # 处理章节
         run_cli(
@@ -1102,6 +1150,15 @@ class TestIndexManager:
                 ),
             ]
         )
+
+        cli_output = capsys.readouterr().out
+        assert '"chapters": 1' in cli_output
+
+        run_cli(["--project-root", root, "get-chapter", "--chapter", "2"])
+        cli_output = capsys.readouterr().out
+        assert '"chapter": 2' in cli_output
+        assert '"title": "试炼"' in cli_output
+        assert '"location": "秘境"' in cli_output
 
         # v5.1 命令
         run_cli(["--project-root", root, "get-entity", "--id", "xiaoyan"])
@@ -1251,6 +1308,15 @@ class TestIndexManager:
                 ),
             ]
         )
+        capsys.readouterr()
+        run_cli(["--project-root", root, "get-chapter", "--chapter", "2"])
+        run_cli(["--project-root", root, "search-scenes", "--location", "秘境", "--limit", "5"])
+        run_cli(["--project-root", root, "get-chapter-reading-power", "--chapter", "3"])
+        cli_output = capsys.readouterr().out
+        assert '"title": "试炼"' in cli_output
+        assert '"location": "秘境"' in cli_output
+        assert '"summary": "开场"' in cli_output
+        assert '"hook_type": "悬念钩"' in cli_output
 
         review_payload = {
             "start_chapter": 1,

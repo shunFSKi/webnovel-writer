@@ -65,6 +65,7 @@ purpose: 指导 /webnovel-study 从样书中提炼可复用模式，并给出迁
   "transfer_rule": "适合事故型男频开篇",
   "risk": "若后续反馈跟不上会掉速",
   "adaptation_note": "迁移到治河文时改成堤身黑浆异象",
+  "prompt_instruction": "开篇第一章必须让主角直接接触核心冲突（如验收合格的堤身突发黑浆），而不是只做旁观者。事故要落地、要具体、要让主角当场接任务。",
   "score": 9,
   "learnability": "可直接学",
   "confidence": "medium",
@@ -75,6 +76,7 @@ purpose: 指导 /webnovel-study 从样书中提炼可复用模式，并给出迁
 说明：
 - `confidence` 建议继承自相关章节的分析可信度
 - `evidence_basis` 建议写明是来自 `title`、`excerpt` 还是更广的结构归纳
+- **`prompt_instruction`** 是新增核心字段，提供可直接用于写作提示词的指令
 
 ## 7. transfer_rule 示例
 

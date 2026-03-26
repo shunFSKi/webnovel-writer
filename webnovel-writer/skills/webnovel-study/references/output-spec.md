@@ -7,20 +7,19 @@ purpose: 定义 /webnovel-study 的输出文件清单、最小字段与按 mode 
 
 ## 1. 标准输出目录
 
+**六维度分析输出**：
 ```text
 参考拆书/{book_safe}/
 ├── 00_总览.md
-├── 01_剧情结构.md
-├── 02_人物特点.md
-├── 03_文笔风格.md
-├── 04_常用词句.md
-├── 05_章节节奏.json
-├── 06_可复用模式.json
-└── 07_对当前项目建议.md
+├── 01_开篇钩子分析.md
+├── 02_爽点结构分析.md
+├── 03_人物塑造分析.md
+├── 04_情绪与节奏分析.md
+├── 05_可复用技巧清单.json
+└── 06_对当前项目建议.md（仅 --compare-current）
 ```
 
 缓存目录：
-
 ```text
 .webnovel/study_cache/{book_safe}/
 ├── chapter_index.json
@@ -30,23 +29,24 @@ purpose: 定义 /webnovel-study 的输出文件清单、最小字段与按 mode 
 ```
 
 说明：
-- `chapter_source.jsonl` 是内部结构化源数据缓存，不属于给用户看的报告。
-- `07_对当前项目建议.md` 仅在 `--compare-current` 时要求生成。
+- `chapter_source.jsonl` 是内部结构化源数据缓存，不属于给用户看的报告
+- `06_对当前项目建议.md` 仅在 `--compare-current` 时要求生成
 
 ## 2. mode -> 输出裁剪表
 
 | mode | 必须输出 |
 |------|----------|
-| full | 00 01 02 03 04 05 06 |
-| plot | 00 01 05 06 |
-| characters | 00 02 06 |
-| style | 00 03 04 06 |
-| phrases | 00 04 06 |
-| pacing | 00 01 05 06 |
+| full | 00 01 02 03 04 05 |
+| opening | 00 01 |
+| payoff | 00 02 05 |
+| character | 00 03 05 |
+| emotion | 00 04 05 |
+| pattern | 00 05 |
 
 说明：
-- `chapter_index.json`、`chapter_source.jsonl`、`chapter_analysis.jsonl`、`study_meta.json` 默认都要生成。
-- `verify` 按此表校验公共产物是否齐全。
+- `chapter_index.json`、`chapter_source.jsonl`、`chapter_analysis.jsonl`、`study_meta.json` 默认都要生成
+- `06_对当前项目建议.md` 仅在 `--compare-current` 时生成
+- `verify` 按此表校验公共产物是否齐全
 
 ## 3. 逐文件最小要求
 
@@ -60,97 +60,68 @@ purpose: 定义 /webnovel-study 的输出文件清单、最小字段与按 mode 
 - 适合学习人群
 - 研究边界/置信度说明（当 `analysis_mode != full_text` 时为必填）
 
-### 01_剧情结构.md
+### 01_开篇钩子分析.md
 必须包含：
-- 开篇前 3 章抓读分析
-- 主线/支线/反派压力结构
-- 卷或阶段承诺
-- 中段反转/最低谷/大兑现
-- 节奏失速点与原因
+- **第一章第一段在做什么？**
+  - 是先交代背景还是直接进事件？
+  - 读者读完第一段知道了什么信息？
+  - 有没有悬念或冲突？
+- **前三章的核心功能分别是什么？**
+- **读者读完前三章会不会继续看？为什么？**
+- **信息投放节奏**
 
-### 02_人物特点.md
+### 02_爽点结构分析.md
 必须包含：
-- 主角卖点与缺陷
-- 主角决策模型
-- 核心配角功能分工
-- 反派分层
-- 人物话风区分
-- 若为退化分析，需标明“基于标题序列/抽样片段推断”
+- 标记出每一个爽点的位置（第几章第几段）
+- 每个爽点的类型是什么？
+- 每个爽点之前有多少章的铺垫/压制？
+- 爽点释放的方式是什么？
+- 总结这本书的爽点循环模式
 
-### 03_文笔风格.md
+### 03_人物塑造分析.md
 必须包含：
-- 句长与段长倾向
-- 对白比例趋势
-- 动作/心理/说明占比
-- 常用推进方式
-- 风格风险点
-- 若为退化分析，需标明“非全文逐句统计”
+- **主角**：第一次出场印象、记忆点手段、核心性格、说话辨识度
+- **配角/反派**：写得最好的配角、反派出场方式、反派人味
+- **对话差异**：能不能遮住名字分辨出是谁在说话？举例说明
 
-### 04_常用词句.md
+### 04_情绪与节奏分析.md
 必须包含：
-- 高频动词
-- 高频意象
-- 常见句式
-- 对白口头语/语气词
-- 建议避开的低价值表达
-- 若为退化分析，需标明来源边界
+- **情绪设计分析**：
+  - 标记情绪波动位置
+  - 情绪制造方式（直接描写 vs 情境）
+  - 章末钩子分析
+  - 情绪密度
+- **节奏和叙事分析**：
+  - 对话与叙述比例
+  - 信息传递方式
+  - 场景转换
+  - 节奏快慢
 
-### 05_章节节奏.json
-最小结构：
-```json
-{
-  "book": "书名",
-  "range": "all",
-  "source_quality": "A/B/C/D",
-  "analysis_mode": "full_text/degraded_structure_only/blocked",
-  "chapters": [
-    {
-      "chapter_number": 1,
-      "chapter_title": "章名",
-      "plot_role": "开局",
-      "hook_types": ["事故钩"],
-      "payoffs": ["主角第一次强反馈"],
-      "conflict_level": 4,
-      "new_question": "更大的问题",
-      "confidence": "high/medium/low",
-      "evidence_basis": ["title", "excerpt"]
-    }
-  ],
-  "global_findings": {
-    "title_payoff_speed": "快/中/慢",
-    "opening_closure": true,
-    "midpoint_reversal": true,
-    "late_stage_acceleration": "强/中/弱"
-  }
-}
-```
-
-### 06_可复用模式.json
+### 05_可复用技巧清单.json
 最小结构：
 ```json
 {
   "book": "书名",
   "source_quality": "A/B/C/D",
   "analysis_mode": "full_text/degraded_structure_only/blocked",
-  "patterns": [
+  "techniques": [
     {
-      "pattern_type": "hook",
-      "name": "事故兑现开篇",
-      "description": "标题承诺在第一章末落地",
-      "evidence_range": "第1-3章",
-      "transfer_rule": "适合事故型男频开篇",
-      "risk": "若后续反馈跟不上会掉速",
-      "adaptation_note": "用于本项目时应嫁接治河任务",
+      "id": 1,
+      "name": "技巧名称",
+      "how_used_in_book": "原书怎么用的（具体描述）",
+      "how_to_adapt": "怎么用到自己的书里（应用建议）",
+      "prompt_instruction": "在提示词里怎么写（可直接放进提示词的指令）",
+      "pattern_type": "hook/payoff/character/emotion/structure",
+      "evidence_range": "第X-Y章",
       "score": 9,
-      "learnability": "可直接学",
-      "confidence": "high/medium/low",
-      "evidence_basis": ["title", "excerpt"]
+      "learnability": "可直接学/需改造/不建议学",
+      "confidence": "high/medium/low"
     }
   ]
 }
 ```
 
-### 07_对当前项目建议.md
+### 06_对当前项目建议.md
 必须包含：
 - 直接可学
 - 需要改造后再学
@@ -219,17 +190,17 @@ purpose: 定义 /webnovel-study 的输出文件清单、最小字段与按 mode 
 
 ## 4. 退化模式约束
 
-- `full_text`：可按正常精读口径输出全部分析。
-- `degraded_structure_only`：允许输出 `00-06`，但人物/文风/词句必须标置信度和研究边界。
-- `blocked`：只允许输出错误/阻断信息，不应伪装生成完整报告。
+- `full_text`：可按正常精读口径输出全部分析
+- `degraded_structure_only`：允许输出 `00-05`，但必须标置信度和研究边界
+- `blocked`：只允许输出错误/阻断信息，不应伪装生成完整报告
 
 ## 5. 不合格输出示例
 
 - 只生成一份大长文，没有结构化文件
-- `05_章节节奏.json` 里只有自然语言，没有字段
-- `06_可复用模式.json` 只有名称，没有迁移规则和风险
-- `03_文笔风格.md` 变成剧情复述
-- `04_常用词句.md` 堆长摘录原文
+- `05_可复用技巧清单.json` 里只有自然语言，没有字段
+- `05_可复用技巧清单.json` 只有名称，没有迁移规则和提示词指令
+- 各维度分析变成剧情复述
+- 堆长摘录原文
 - 正文已混淆却不写退化说明
 
 ## 6. 验收口径
@@ -239,3 +210,4 @@ purpose: 定义 /webnovel-study 的输出文件清单、最小字段与按 mode 
 - 机能消费：JSON/JSONL 字段稳定、后续可复用
 - 可重跑：prepare/verify 后能补缺文件而不是重做全流程
 - 可迁移：结论能落到别的项目，而不是只对这一本书成立
+- **可操作**：每个技巧都提供了可直接用于提示词的指令

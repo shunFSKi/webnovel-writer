@@ -171,8 +171,17 @@ python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" wor
 
 ### Step 2A：正文起草
 
-执行前必须加载：
+执行前必须加载（按优先级顺序）：
 ```bash
+# 1. 项目本地风格约束（最高优先级）
+if [ -f "${PROJECT_ROOT}/设定集/写作风格.md" ]; then
+    cat "${PROJECT_ROOT}/设定集/写作风格.md"
+fi
+if [ -f "${PROJECT_ROOT}/.webnovel/preferences.json" ]; then
+    cat "${PROJECT_ROOT}/.webnovel/preferences.json"
+fi
+
+# 2. 技能通用约束
 cat "${SKILL_ROOT}/../../references/shared/core-constraints.md"
 ```
 
@@ -193,8 +202,17 @@ cat "${SKILL_ROOT}/../../references/shared/core-constraints.md"
 
 ### Step 2B：风格适配（`--fast` / `--minimal` 跳过）
 
-执行前加载：
+执行前加载（按优先级顺序）：
 ```bash
+# 1. 项目本地风格约束（最高优先级）
+if [ -f "${PROJECT_ROOT}/设定集/写作风格.md" ]; then
+    cat "${PROJECT_ROOT}/设定集/写作风格.md"
+fi
+if [ -f "${PROJECT_ROOT}/.webnovel/preferences.json" ]; then
+    cat "${PROJECT_ROOT}/.webnovel/preferences.json"
+fi
+
+# 2. 技能通用风格适配规则
 cat "${SKILL_ROOT}/references/style-adapter.md"
 ```
 
@@ -259,8 +277,17 @@ review_metrics 字段约束（当前工作流约定只传以下字段）：
 
 ### Step 4：润色（问题修复优先）
 
-执行前必须加载：
+执行前必须加载（按优先级顺序）：
 ```bash
+# 1. 项目本地风格约束（最高优先级）
+if [ -f "${PROJECT_ROOT}/设定集/写作风格.md" ]; then
+    cat "${PROJECT_ROOT}/设定集/写作风格.md"
+fi
+if [ -f "${PROJECT_ROOT}/.webnovel/preferences.json" ]; then
+    cat "${PROJECT_ROOT}/.webnovel/preferences.json"
+fi
+
+# 2. 技能通用润色与排版规则
 cat "${SKILL_ROOT}/references/polish-guide.md"
 cat "${SKILL_ROOT}/references/writing/typesetting.md"
 ```
@@ -294,17 +321,24 @@ Data Agent 默认子步骤（全部执行）：
 - A. 加载上下文
 - B. AI 实体提取
 - C. 实体消歧
-- D. 写入 state/index
+- D. 写入基础 state/index（实体、别名、状态变化、关系、state.json）
 - E. 写入章节摘要
 - F. AI 场景切片
 - G. RAG 向量索引（`rag index-chapter --scenes ...`）
 - H. 风格样本评估（`style extract --scenes ...`，仅 `review_score >= 80` 时）
 - I. 债务利息（默认跳过）
 
+Step 5 关键写入契约：
+1. D 步必须完成实体/别名/状态变化/关系写入，并执行 `state process-chapter` 更新 `state.json`。
+2. F 步产出 scenes 后，必须在进入 G/H 前显式执行 `index process-chapter --chapter ... --title ... --location ... --word-count ... --entities ... --scenes ...`，将当前章写入 `index.db.chapters` / `index.db.scenes` / appearances。
+3. Dashboard 的章节页、场景页依赖 `index process-chapter`；只写 `state.json` 不算完成 Step 5。
+4. 若 Step 3 产出了 `reader-pull-checker` 的结构化结果，还必须显式执行 `index save-chapter-reading-power --data ...`，将当前章写入 `chapter_reading_power`；若本轮没有该结构化结果，可跳过这一步。
+
 `--scenes` 来源优先级（G/H 步骤共用）：
-1. 优先从 `index.db` 的 scenes 记录获取（Step F 写入的结果）
-2. 其次按 `start_line` / `end_line` 从正文切片构造
-3. 最后允许单场景退化（整章作为一个 scene）
+1. 优先使用 F 步刚生成、并已传给 `index process-chapter` 的同一份 scenes JSON
+2. 补跑 G/H 时，其次从 `index.db` 的 scenes 记录获取
+3. 再次按 `start_line` / `end_line` 从正文切片构造
+4. 最后允许单场景退化（整章作为一个 scene）
 
 Step 5 前硬闸门：
 - `review_metrics` 已成功落库。
@@ -315,13 +349,17 @@ Step 5 前硬闸门：
 - 任一条件不满足，禁止启动 Data Agent。
 
 Step 5 失败隔离规则：
-- 若 G/H 失败原因是 `--scenes` 缺失、scene 为空、scene JSON 格式错误：只补跑 G/H 子步骤，不回滚或重跑 Step 1-4。
-- 若 A-E 失败（state/index/summary 写入失败）：仅重跑 Step 5，不回滚已通过的 Step 1-4。
-- 禁止因 RAG/style 子步骤失败而重跑整个写作链。
+- 若 G/H 失败原因是 `--scenes` 缺失、scene 为空、scene JSON 格式错误：先补 `index process-chapter` 或 scenes 输入，再只补跑 G/H，不回滚或重跑 Step 1-4。
+- 若 D-F 失败（state/index/summary/scenes 写入失败）：仅重跑 Step 5，不回滚已通过的 Step 1-4。
+- 若 `save-chapter-reading-power` 失败：只补当前章的追读力元数据落库，不回滚或重跑 Step 1-4。
+- 禁止因 RAG/style/reading-power 子步骤失败而重跑整个写作链。
 
 执行后检查（最小白名单）：
 - `.webnovel/state.json`
 - `.webnovel/index.db`
+- `.webnovel/index.db` 中当前章的 `chapters` 记录
+- `.webnovel/index.db` 中当前章的 `scenes` 记录（至少 1 条）
+- 若本轮产出了 `reader-pull-checker` 结构化结果，`.webnovel/index.db` 中当前章的 `chapter_reading_power` 记录
 - `.webnovel/summaries/ch{chapter_padded}.md`
 - `.webnovel/observability/data_agent_timing.jsonl`（观测日志）
 
@@ -358,8 +396,9 @@ git -c i18n.commitEncoding=UTF-8 commit -m "第{chapter_num}章: {title}"
 3. Step 4 已处理全部 `critical`，`high` 未修项有 deviation 记录
 4. Step 4 的 `anti_ai_force_check=pass`（基于全文检查；fail 时不得进入 Step 5）
 5. Step 4 的 `project_style_force_check=pass`，且 `unresolved_hard_violations=0`
-6. Step 5 已回写 `state.json`、`index.db`、`summaries/ch{chapter_padded}.md`
-7. 若开启性能观测，已读取最新 timing 记录并输出结论
+6. Step 5 已回写 `state.json`、`index.db`、`summaries/ch{chapter_padded}.md`，且当前章在 `index.db.chapters` / `index.db.scenes` 有对应记录
+7. 若本轮产出了 `reader-pull-checker` 结构化结果，当前章的 `chapter_reading_power` 已落库
+8. 若开启性能观测，已读取最新 timing 记录并输出结论
 
 ## 验证与交付
 
@@ -370,11 +409,14 @@ test -f "${PROJECT_ROOT}/.webnovel/state.json"
 test -f "${PROJECT_ROOT}/正文/第${chapter_padded}章.md"
 test -f "${PROJECT_ROOT}/.webnovel/summaries/ch${chapter_padded}.md"
 python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" index get-recent-review-metrics --limit 1
+python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" index get-chapter --chapter "${chapter_num}"
+python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" index get-chapter-reading-power --chapter "${chapter_num}" || true
 tail -n 1 "${PROJECT_ROOT}/.webnovel/observability/data_agent_timing.jsonl" || true
 ```
 
 成功标准：
 - 章节文件、摘要文件、状态文件齐全且内容可读。
+- 当前章能从 `index.db.chapters` 读取，且 `index.db.scenes` 至少有 1 条记录；若本轮产出追读力结构化结果，`chapter_reading_power` 可读。
 - 审查分数可追溯，`overall_score` 与 Step 5 输入一致。
 - 润色后未破坏大纲与设定约束。
 

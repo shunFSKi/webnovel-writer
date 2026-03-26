@@ -48,6 +48,7 @@ python "${SCRIPTS_DIR}/webnovel.py" --project-root "$PROJECT_ROOT" study bridge-
   "transfer_rule": "适合事故型男频开篇",
   "risk": "后续反馈跟不上会掉速",
   "adaptation_note": "迁移到治河文时改成堤身黑浆异象",
+  "prompt_instruction": "开篇第一章必须让主角直接接触核心冲突，而不是只做旁观者。事故要落地、要具体、要让主角当场接任务。",
   "score": 9,
   "learnability": "可直接学"
 }
@@ -57,14 +58,15 @@ python "${SCRIPTS_DIR}/webnovel.py" --project-root "$PROJECT_ROOT" study bridge-
 ```json
 {
   "pattern_type": "hook",
-  "description": "事故兑现开篇；标题承诺在第一章末落地；适合事故型男频开篇；迁移到治河文时改成堤身黑浆异象",
+  "description": "事故兑现开篇；标题承诺在第一章末落地；适合事故型男频开篇；迁移到治河文时改成堤身黑浆异象；提示词指令：开篇第一章必须让主角直接接触核心冲突，而不是只做旁观者。事故要落地、要具体、要让主角当场接任务。",
   "source_chapter": 0,
   "learned_at": "2026-03-19T00:00:00Z"
 }
 ```
 
 说明：
-- `description` 由 `name + description + transfer_rule + adaptation_note` 拼接降维而成
+- `description` 由 `name + description + transfer_rule + adaptation_note + prompt_instruction` 拼接降维而成
+- `prompt_instruction` 是新增核心字段，确保可复用技巧能落地到提示词层面
 - `risk` 不直接写入 memory，但会体现在筛选环节
 
 ## 5. source_chapter 规则

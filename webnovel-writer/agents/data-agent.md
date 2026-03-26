@@ -113,18 +113,18 @@ python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" wher
 
 ### Step D: 写入存储
 
- **写入 index.db (实体/别名/状态变化/关系)**:
- ```bash
-  python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" index upsert-entity --data '{...}'
-  python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" index register-alias --alias "红衣女子" --entity "hongyi_girl" --type "角色"
-  python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" index record-state-change --data '{...}'
-  python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" index upsert-relationship --data '{...}'
- ```
+**D1. 写入 index.db 的实体层数据（实体/别名/状态变化/关系）**:
+```bash
+python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" index upsert-entity --data '{...}'
+python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" index register-alias --alias "红衣女子" --entity "hongyi_girl" --type "角色"
+python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" index record-state-change --data '{...}'
+python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" index upsert-relationship --data '{...}'
+```
 
- **更新精简版 state.json**:
- ```bash
-  python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" state process-chapter --chapter 100 --data '{...}'
- ```
+**D2. 更新精简版 state.json**:
+```bash
+python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" state process-chapter --chapter 100 --data '{...}'
+```
 
 写入内容：
 - 更新 `progress.current_chapter`
@@ -132,6 +132,8 @@ python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" wher
 - 更新 `strand_tracker`
 - 更新 `disambiguation_warnings/pending`
 - **新增 `chapter_meta`**（钩子/模式/结束状态）
+
+**D3. 关键约束**：D 步只负责实体层与 `state.json`，还不算章节索引写完。`chapters` / `scenes` / appearances 必须等 F 步拿到 scenes 后，再显式调用 `index process-chapter` 落库。
 
 ### Step E: 生成章节摘要文件（新增）
 
@@ -166,6 +168,24 @@ hook_strength: "strong"
 
 - 按地点/时间/视角切分场景
 - 每个场景生成摘要 (50-100字)
+- F 步产出 scenes 后，必须立刻执行章节索引写入：
+
+```bash
+python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" index process-chapter \
+  --chapter 100 \
+  --title "章节标题" \
+  --location "章节主地点" \
+  --word-count 2500 \
+  --entities '[{"id":"xiaoyan","type":"角色","mentions":["萧炎"]}]' \
+  --scenes '[{"index":1,"start_line":1,"end_line":80,"location":"法场","summary":"当场翻案","characters":["shenli"]}]'
+```
+
+这一步会写入：
+- `index.db.chapters`
+- `index.db.scenes`
+- `appearances`
+
+**注意**：Dashboard 的章节页、场景页直接读这几张表；如果只更新 `state.json` 和摘要，不执行 `index process-chapter`，Dashboard 不会跟着写文流程自动补齐。
 
 ### Step G: 向量嵌入
 
@@ -194,6 +214,21 @@ if review_score >= 80:
 python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" style extract --chapter 100 --score 85 --scenes '[...]'
 ```
 
+### Step H.5: 章节追读力元数据落库（按结果触发）
+
+若本轮 Step 3 包含 `reader-pull-checker` 且已产出结构化追读力结果，Data Agent 必须追加：
+
+```bash
+python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" index save-chapter-reading-power --data '{...}'
+```
+
+这一步写入 `index.db.chapter_reading_power`，供：
+- Dashboard 追读力页
+- Context Agent 的 `reader_signal`
+- 后续模式复用统计
+
+若本轮没有 `reader-pull-checker` 的结构化输出，可以跳过此步；但**不能**把这一步默认当成 `state process-chapter` 或 `index process-chapter` 的副产物。
+
 ### Step I: 债务利息计算
 
 **默认不自动触发**。仅在“开启债务追踪”或用户明确要求时执行：
@@ -217,6 +252,7 @@ python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" styl
 - F AI 场景切片
 - G RAG 向量索引
 - H 风格样本评估（若跳过写 0）
+- H5 追读力元数据落库（若跳过写 0）
 - I 债务利息（若跳过写 0）
 - TOTAL 总耗时
 
@@ -302,7 +338,9 @@ python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" styl
 2. ✅ 状态变化被正确捕获（准确率 > 85%）
 3. ✅ 消歧结果合理（高置信度 > 80%）
 4. ✅ 场景切片数量合理（通常 3-6 个/章）
-5. ✅ 向量成功存入数据库
-6. ✅ 章节摘要文件生成成功
-7. ✅ chapter_meta 写入 state.json
-8. ✅ 输出格式为有效 JSON
+5. ✅ 当前章已写入 `index.db.chapters` / `index.db.scenes`
+6. ✅ 向量成功存入数据库
+7. ✅ 章节摘要文件生成成功
+8. ✅ chapter_meta 写入 state.json
+9. ✅ 若本轮产出追读力结构化结果，`chapter_reading_power` 已落库
+10. ✅ 输出格式为有效 JSON
