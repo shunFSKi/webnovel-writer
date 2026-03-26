@@ -38,67 +38,170 @@ class StyleSynthesizer:
 
         return sorted(books)
 
-    def read_style_file(self, book_name: str) -> Dict[str, Any]:
-        """读取单本拆书的文笔风格文件"""
-        style_file = self.source_dir / book_name / "03_文笔风格.md"
-        overview_file = self.source_dir / book_name / "00_总览.md"
-
+    def read_all_files(self, book_name: str) -> Dict[str, Any]:
+        """读取单本拆书的所有分析文件"""
         data = {
             "name": book_name,
-            "style_content": "",
             "overview": "",
+            "plot_structure": "",
+            "character_features": "",
+            "style_content": "",
+            "common_phrases": "",
             "features": {}
         }
 
-        if style_file.exists():
-            with open(style_file, 'r', encoding='utf-8') as f:
-                data["style_content"] = f.read()
+        # 定义文件映射
+        file_mapping = {
+            "00_总览.md": "overview",
+            "01_剧情结构.md": "plot_structure",
+            "02_人物特点.md": "character_features",
+            "03_文笔风格.md": "style_content",
+            "04_常用词句.md": "common_phrases"
+        }
 
-        if overview_file.exists():
-            with open(overview_file, 'r', encoding='utf-8') as f:
-                data["overview"] = f.read()
+        book_dir = self.source_dir / book_name
+        for filename, key in file_mapping.items():
+            file_path = book_dir / filename
+            if file_path.exists():
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        data[key] = f.read()
+                except Exception as e:
+                    print(f"  警告: 读取 {filename} 失败: {e}")
 
         return data
 
-    def extract_features(self, content: str) -> Dict[str, Any]:
-        """从文笔风格文件中提取特征"""
+    def extract_all_features(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """从所有文件中提取特征"""
         features = {
+            # 从00_总览提取
+            "genre": [],
+            "type": [],
+            "target_reader": [],
+
+            # 从01_剧情结构提取
+            "opening_hooks": [],
+            "plot_structure": [],
+            "pacing_pattern": [],
+            "arc_types": [],
+
+            # 从02_人物特点提取
+            "protagonist_traits": [],
+            "dialogue_style": [],
+            "character_functions": [],
+
+            # 从03_文笔风格提取
             "sentence_length": [],
             "paragraph_length": [],
             "dialogue_ratio": [],
             "action_ratio": [],
-            "patterns": []
+            "psychology_ratio": [],
+            "patterns": [],
+
+            # 从04_常用词句提取
+            "high_freq_verbs": [],
+            "common_images": [],
+            "sentence_patterns": []
         }
 
-        # 提取句长信息
-        sentence_match = re.search(r'平均句长[：:]\s*约\s*(\d+[-~到]\d*)\s*字', content)
-        if sentence_match:
-            features["sentence_length"].append(sentence_match.group(1))
+        # 从00_总览提取基本信息
+        if data["overview"]:
+            # 提取类型
+            type_match = re.search(r'类型[：:]\s*([^\n]+)', data["overview"])
+            if type_match:
+                features["type"].append(type_match.group(1).strip())
 
-        # 提取段长信息
-        paragraph_match = re.search(r'平均段长[：:]\s*约\s*(\d+[-~到]\d*)\s*字', content)
-        if paragraph_match:
-            features["paragraph_length"].append(paragraph_match.group(1))
+            # 提取题材
+            genre_match = re.search(r'题材[：:]\s*([^\n]+)', data["overview"])
+            if genre_match:
+                features["genre"].append(genre_match.group(1).strip())
 
-        # 提取对白占比
-        dialogue_match = re.search(r'对白占比[：:]\s*约\s*(\d+[-~到]\d*)\s*%', content)
-        if dialogue_match:
-            features["dialogue_ratio"].append(dialogue_match.group(1))
+            # 提取目标读者
+            reader_match = re.search(r'目标读者[：:]\s*([^\n]+)', data["overview"])
+            if reader_match:
+                features["target_reader"].append(reader_match.group(1).strip())
 
-        # 提取动作描写占比
-        action_match = re.search(r'动作描写[（(](约\s*)?(\d+)%[）)]', content)
-        if action_match:
-            features["action_ratio"].append(action_match.group(2))
+        # 从01_剧情结构提取特征
+        if data["plot_structure"]:
+            # 提取开篇钩子类型
+            hook_types = re.findall(r'钩子类型[：:]\s*([^\n]+)', data["plot_structure"])
+            features["opening_hooks"].extend(hook_types)
 
-        # 提取风格特征关键词
-        if "短句" in content:
-            features["patterns"].append("短句为主")
-        if "对话" in content:
-            features["patterns"].append("对话丰富")
-        if "动作" in content:
-            features["patterns"].append("动作密集")
-        if "心理" in content:
-            features["patterns"].append("心理描写")
+            # 提取节奏模式
+            if "螺旋上升" in data["plot_structure"]:
+                features["pacing_pattern"].append("螺旋上升")
+            if "三幕式" in data["plot_structure"]:
+                features["pacing_pattern"].append("三幕式")
+            if "闭环" in data["plot_structure"]:
+                features["arc_types"].append("闭环式")
+
+        # 从02_人物特点提取特征
+        if data["character_features"]:
+            # 提取主角特点
+            protagonist_section = re.search(r'## 主角.*?(?=\n##|\Z)', data["plot_structure"], re.DOTALL)
+            if protagonist_section:
+                # 提取核心卖点
+                selling_points = re.findall(r'核心卖点|卖点|特点.*?[:：]\s*([^\n]+)', data["character_features"])
+                features["protagonist_traits"].extend(selling_points[:3])  # 只取前3个
+
+            # 提取对话风格相关
+            if "对话" in data["character_features"] or "对白" in data["character_features"]:
+                features["dialogue_style"].append("有明确对话风格")
+
+        # 从03_文笔风格提取特征
+        if data["style_content"]:
+            # 提取句长信息
+            sentence_match = re.search(r'平均句长[：:]\s*约\s*(\d+[-~到]\d*)\s*字', data["style_content"])
+            if sentence_match:
+                features["sentence_length"].append(sentence_match.group(1))
+
+            # 提取段长信息
+            paragraph_match = re.search(r'平均段长[：:]\s*约\s*(\d+[-~到]\d*)\s*字', data["style_content"])
+            if paragraph_match:
+                features["paragraph_length"].append(paragraph_match.group(1))
+
+            # 提取对白占比
+            dialogue_match = re.search(r'对白占比[：:]\s*约\s*(\d+[-~到]\d*)\s*%', data["style_content"])
+            if dialogue_match:
+                features["dialogue_ratio"].append(dialogue_match.group(1))
+
+            # 提取动作描写占比
+            action_match = re.search(r'动作描写[（(](约\s*)?(\d+)%[）)]', data["style_content"])
+            if action_match:
+                features["action_ratio"].append(action_match.group(2))
+
+            # 提取心理描写占比
+            psych_match = re.search(r'心理描写[（(](约\s*)?(\d+)%[）)]', data["style_content"])
+            if psych_match:
+                features["psychology_ratio"].append(psych_match.group(2))
+
+            # 提取风格特征关键词
+            if "短句" in data["style_content"]:
+                features["patterns"].append("短句为主")
+            if "对话" in data["style_content"]:
+                features["patterns"].append("对话丰富")
+            if "动作" in data["style_content"]:
+                features["patterns"].append("动作密集")
+            if "心理" in data["style_content"]:
+                features["patterns"].append("心理描写")
+
+        # 从04_常用词句提取特征
+        if data["common_phrases"]:
+            # 提取高频动词
+            verb_section = re.search(r'## 高频动词.*?(?=\n##|\Z)', data["common_phrases"], re.DOTALL)
+            if verb_section:
+                verbs = re.findall(r'[\u4e00-\u9fff]+', verb_section.group())
+                features["high_freq_verbs"].extend(verbs[:10])  # 取前10个
+
+            # 提取常见意象
+            if "意象" in data["common_phrases"]:
+                features["common_images"].append("有意象运用")
+
+            # 提取句式特点
+            if "三字短句" in data["common_phrases"]:
+                features["sentence_patterns"].append("三字短句")
+            if "对话短句" in data["common_phrases"]:
+                features["sentence_patterns"].append("对话短句")
 
         return features
 
@@ -112,9 +215,8 @@ class StyleSynthesizer:
 
         for book in books:
             print(f"分析 {book}...")
-            data = self.read_style_file(book)
-            if data["style_content"]:
-                data["features"] = self.extract_features(data["style_content"])
+            data = self.read_all_files(book)
+            data["features"] = self.extract_all_features(data)
             self.style_data[book] = data
 
     def generate_guide(self) -> str:
@@ -134,7 +236,6 @@ class StyleSynthesizer:
 
             # 从总览中提取基本信息
             if data["overview"]:
-                # 提取类型、题材等信息
                 type_match = re.search(r'类型[：:]\s*([^\n]+)', data["overview"])
                 if type_match:
                     lines.append(f"- **类型**: {type_match.group(1)}")
@@ -143,6 +244,61 @@ class StyleSynthesizer:
                 if genre_match:
                     lines.append(f"- **题材**: {genre_match.group(1)}")
 
+            lines.append("")
+
+        # 题材与类型分析
+        lines.append("## 题材与类型分布\n")
+
+        # 统计类型
+        type_count = defaultdict(int)
+        for data in self.style_data.values():
+            for t in data["features"].get("type", []):
+                type_count[t] += 1
+
+        if type_count:
+            lines.append("**类型分布**:\n")
+            for t, count in sorted(type_count.items(), key=lambda x: -x[1]):
+                lines.append(f"- {t} ({count}本)")
+            lines.append("")
+
+        # 统计题材
+        genre_count = defaultdict(int)
+        for data in self.style_data.values():
+            for g in data["features"].get("genre", []):
+                genre_count[g] += 1
+
+        if genre_count:
+            lines.append("**题材分布**:\n")
+            for g, count in sorted(genre_count.items(), key=lambda x: -x[1]):
+                lines.append(f"- {g} ({count}本)")
+            lines.append("")
+
+        # 开篇钩子分析
+        lines.append("## 开篇钩子分析\n")
+
+        hook_types = defaultdict(int)
+        for data in self.style_data.values():
+            for hook in data["features"].get("opening_hooks", []):
+                hook_types[hook] += 1
+
+        if hook_types:
+            lines.append("**常见钩子类型**:\n")
+            for hook, count in sorted(hook_types.items(), key=lambda x: -x[1]):
+                lines.append(f"- {hook} ({count}本)")
+            lines.append("")
+
+        # 节奏模式分析
+        lines.append("## 节奏与结构特点\n")
+
+        pacing_patterns = defaultdict(int)
+        for data in self.style_data.values():
+            for pattern in data["features"].get("pacing_pattern", []):
+                pacing_patterns[pattern] += 1
+
+        if pacing_patterns:
+            lines.append("**节奏模式**:\n")
+            for pattern, count in sorted(pacing_patterns.items(), key=lambda x: -x[1]):
+                lines.append(f"- {pattern} ({count}本)")
             lines.append("")
 
         # 共性风格特征
@@ -181,78 +337,128 @@ class StyleSynthesizer:
 
         # 对白特征
         lines.append("### 对白特点\n")
+
         dialogue_ratios = []
+        dialogue_styles = []
+
         for book_name, data in self.style_data.items():
             if data["features"].get("dialogue_ratio"):
                 dialogue_ratios.append((book_name, data["features"]["dialogue_ratio"][0]))
+            if data["features"].get("dialogue_style"):
+                dialogue_styles.extend(data["features"]["dialogue_style"])
 
         if dialogue_ratios:
             lines.append("**对白占比**: " + "、".join([f"{book}({ratio}%)" for book, ratio in dialogue_ratios]) + "\n")
 
+        if dialogue_styles:
+            lines.append("**对话风格**: " + "、".join(set(dialogue_styles)) + "\n")
+
         lines.append("")
 
-        # 动作描写
+        # 描写特点
         lines.append("### 描写特点\n")
+
         action_ratios = []
+        psychology_ratios = []
+
         for book_name, data in self.style_data.items():
             if data["features"].get("action_ratio"):
                 action_ratios.append((book_name, data["features"]["action_ratio"][0]))
+            if data["features"].get("psychology_ratio"):
+                psychology_ratios.append((book_name, data["features"]["psychology_ratio"][0]))
 
         if action_ratios:
             lines.append("**动作描写占比**: " + "、".join([f"{book}({ratio}%)" for book, ratio in action_ratios]) + "\n")
 
+        if psychology_ratios:
+            lines.append("**心理描写占比**: " + "、".join([f"{book}({ratio}%)" for book, ratio in psychology_ratios]) + "\n")
+
         lines.append("")
 
-        # 详细分析每本书
+        # 句式分析
+        lines.append("### 句式与用词\n")
+
+        sentence_patterns = defaultdict(int)
+        for data in self.style_data.values():
+            for pattern in data["features"].get("sentence_patterns", []):
+                sentence_patterns[pattern] += 1
+
+        if sentence_patterns:
+            lines.append("**常见句式**:\n")
+            for pattern, count in sorted(sentence_patterns.items(), key=lambda x: -x[1]):
+                if count >= 2:
+                    lines.append(f"- {pattern} ({count}本)")
+            lines.append("")
+
+        # 各书详细特征
         lines.append("## 各书详细特征\n")
         for book_name in sorted(self.style_data.keys()):
             data = self.style_data[book_name]
-            if not data["style_content"]:
-                continue
-
             lines.append(f"### {book_name}\n")
 
-            # 提取关键章节
-            content = data["style_content"]
-
-            # 提取句长段长倾向
-            if "句长与段长倾向" in content or "句长特征" in content:
-                lines.append("#### 句式特征\n")
-                # 简化处理，直接摘录部分内容
-                lines.extend(self._extract_section(content, ["句长特征", "句式特点", "句长与段长倾向"]))
+            # 剧情结构亮点
+            if data["plot_structure"]:
+                lines.append("#### 剧情结构\n")
+                # 提取关键信息
+                if "开篇" in data["plot_structure"]:
+                    lines.append("- " + self._extract_first_line(data["plot_structure"], "开篇"))
+                if "主线" in data["plot_structure"]:
+                    lines.append("- " + self._extract_first_line(data["plot_structure"], "主线"))
+                if "反派" in data["plot_structure"]:
+                    lines.append("- " + self._extract_first_line(data["plot_structure"], "反派"))
                 lines.append("")
 
-            # 提取对白特征
-            if "对白" in content:
-                lines.append("#### 对白特征\n")
-                lines.extend(self._extract_section(content, ["对白特点", "对白比例趋势", "对白特征"]))
+            # 人物特点
+            if data["character_features"]:
+                lines.append("#### 人物特点\n")
+                if "主角" in data["character_features"]:
+                    lines.append("- " + self._extract_first_line(data["character_features"], "主角"))
+                if "配角" in data["character_features"]:
+                    lines.append("- " + self._extract_first_line(data["character_features"], "配角"))
                 lines.append("")
 
-            # 提取动作描写
-            if "动作描写" in content:
-                lines.append("#### 动作描写\n")
-                lines.extend(self._extract_section(content, ["动作描写", "动作/心理/说明占比"]))
+            # 文笔风格
+            if data["style_content"]:
+                lines.append("#### 文笔风格\n")
+                lines.extend(self._extract_section(data["style_content"], ["句长特征", "句式特点", "句长与段长倾向"]))
                 lines.append("")
 
-        # 可复用模式
+            # 常用词句
+            if data["common_phrases"]:
+                lines.append("#### 常用词句\n")
+                lines.extend(self._extract_section(data["common_phrases"], ["高频动词", "常见句式", "意象"]))
+                lines.append("")
+
+        # 可复用模式建议
         lines.append("## 可复用模式建议\n")
         lines.append("基于以上分析，以下是推荐的写作模式：\n")
 
-        lines.append("### 开头模式")
+        lines.append("### 开头模式\n")
+        common_hooks = list(hook_types.keys())[:3]
+        if common_hooks:
+            for hook in common_hooks:
+                lines.append(f"- 优先使用 {hook} 作为开篇钩子")
         lines.append("- 快速进入场景，避免长篇背景铺陈")
         lines.append("- 从动作或对话开始，吸引读者注意力\n")
 
-        lines.append("### 对话模式")
+        lines.append("### 对话模式\n")
         lines.append("- 对话要推动剧情，不要为了对话而对话")
         lines.append("- 每句对话都应该有目的：试探、施压、回避、诱导等")
-        lines.append("- 允许自然口语，不必过于书面化\n")
+        lines.append("- 允许自然口语，不必过于书面化")
 
-        lines.append("### 动作描写模式")
+        if dialogue_styles:
+            lines.append(f"- 参考风格：{', '.join(set(dialogue_styles))}\n")
+
+        lines.append("### 动作描写模式\n")
         lines.append("- 动作要具体，避免笼统描述")
         lines.append("- 用动作暗示心理和情绪")
         lines.append("- 动作链要清晰：拿起→转身→走过去\n")
 
-        lines.append("")
+        lines.append("### 节奏模式\n")
+        if pacing_patterns:
+            lines.append(f"- 推荐节奏：{', '.join(set(pacing_patterns.keys()))}\n")
+        lines.append("- 每3-5章完成一个小闭环")
+        lines.append("- 章节之间要有压力递进\n")
 
         # 避坑指南
         lines.append("## 避坑指南\n")
@@ -260,9 +466,9 @@ class StyleSynthesizer:
         lines.append("- 避免大段纯说明，信息要融入动作和对话")
         lines.append("- 避免机械的三段式结构（首先、其次、最后）")
         lines.append("- 避免所有角色说话一个口气")
-        lines.append("- 避免过度修饰，多用动词少用形容词\n")
-
-        lines.append("")
+        lines.append("- 避免过度修饰，多用动词少用形容词")
+        lines.append("- 避免主角性格单薄，要有成长弧光")
+        lines.append("- 避免配角工具化，要有独立动机\n")
 
         # 项目适配建议
         lines.append("## 项目适配建议\n")
@@ -270,12 +476,28 @@ class StyleSynthesizer:
         lines.append("1. **重点参考**：选择与当前项目题材最接近的拆书作为主要参考")
         lines.append("2. **风格融合**：从多本拆书中提取优点，融合成自己的风格")
         lines.append("3. **本地化**：将参考风格与项目已有的 `设定集/写作风格.md` 结合")
-        lines.append("4. **持续优化**：根据写作实际情况，不断调整和优化风格指南\n")
+        lines.append("4. **持续优化**：根据写作实际情况，不断调整和优化风格指南")
+
+        if type_count:
+            top_type = sorted(type_count.items(), key=lambda x: -x[1])[0][0]
+            lines.append(f"5. **类型侧重**：本项目属于{top_type}类型，重点参考同类拆书")
+
+        lines.append("")
 
         lines.append("---\n")
         lines.append("*本文件由工具自动生成，请根据项目实际情况进行调整和完善。*")
 
         return "\n".join(lines)
+
+    def _extract_first_line(self, content: str, keyword: str) -> str:
+        """提取包含关键词的第一行"""
+        for line in content.split("\n"):
+            if keyword in line:
+                # 清理格式
+                cleaned = re.sub(r'^#+\s*', '', line.strip())
+                if cleaned and len(cleaned) > 3:
+                    return cleaned
+        return f"(详见{keyword}相关内容)"
 
     def _extract_section(self, content: str, keywords: List[str]) -> List[str]:
         """提取特定章节的内容"""
