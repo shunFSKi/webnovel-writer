@@ -90,6 +90,7 @@ RERANK_API_KEY=your_rerank_api_key
 /webnovel-query 伏笔
 /webnovel-resume
 /webnovel-learn "这章的危机钩设计有效"
+/webnovel-style-synth
 ```
 
 ### 6) 启动可视化面板（可选）
@@ -139,6 +140,7 @@ model: sonnet
 | `/webnovel-dashboard` | 启动只读面板 | 本地 Dashboard 服务 |
 | `/webnovel-learn [内容]` | 沉淀写作模式到项目记忆 | `.webnovel/project_memory.json` |
 | `/webnovel-study [样书路径]` | 拆解整本样书并输出结构化分析 | `参考拆书/{book_safe}/`、`.webnovel/study_cache/{book_safe}/` |
+| `/webnovel-style-synth` | 综合参考拆书风格生成项目风格指南 | `设定集/参考拆书综合风格指南.md` |
 
 ## 命令详细用法
 
@@ -451,6 +453,52 @@ python -m dashboard.server --project-root "${PROJECT_ROOT}" --no-browser --port 
 - 番茄 EPUB 若检测到私有码混淆，会诚实降级为结构级分析，不伪装成全文精读
 - `--compare-current` 只输出建议文件，不直接改当前项目大纲或设定
 
+### `/webnovel-style-synth`
+
+用途：综合分析项目中所有参考拆书的文笔风格，自动提取共性特征和可复用模式，生成适合当前项目的风格指南。
+
+执行方式：
+
+```bash
+/webnovel-style-synth
+```
+
+或指定拆书目录：
+
+```bash
+python3 /path/to/synth_style_guide.py --project-root . --source-dir 参考拆书
+```
+
+主要产物：
+
+- `设定集/参考拆书综合风格指南.md`，包含：
+  - 参考书目清单
+  - 共性风格特征（句长、段长、对白、描写特点）
+  - 各书详细特征分析
+  - 可复用模式建议
+  - 避坑指南
+  - 项目适配建议
+
+功能特点：
+
+- 自动扫描 `参考拆书/` 目录下的所有拆书
+- 从 `03_文笔风格.md` 中提取风格特征
+- 统计句长、段长、对白占比、动作描写比例等数据
+- 识别常见写作模式和特征
+- 生成可操作的风格指南
+
+适合的使用时机：
+
+- 项目初始化后，参考拆书积累到一定数量
+- 需要整理参考风格并形成项目专属风格指南时
+- 想要快速了解多本参考书的共同特点和差异时
+
+与现有工具的配合：
+
+- 生成风格指南后，可与 `设定集/写作风格.md` 结合使用
+- 为 `/webnovel-write` 提供更明确的风格参考
+- 作为 `/webnovel-init` 的补充，在项目建立后进一步完善风格约束
+
 ## 手动 CLI 与排障入口
 
 当 slash command 不方便、需要批处理、需要调试路径解析，或者想单独验证某个步骤时，推荐直接走统一入口脚本：`webnovel.py`。
@@ -736,7 +784,8 @@ python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" wor
 
 | 版本 | 说明 |
 |------|------|
-| **v5.5.6 (当前)** | 新增项目风格约束包、project-style-checker、Step 4 规则复检与 Step 5 硬闸门，确保写作流程真正阻断风格违规章节进入数据回写。 |
+| **v5.5.7 (当前)** | 新增 /webnovel-style-synth 技能，自动分析参考拆书并生成项目风格指南；移除硬编码风格指南，项目本地 `设定集/写作风格.md` 成为最高优先级，工具更加通用化。 |
+| **v5.5.6** | 新增项目风格约束包、project-style-checker、Step 4 规则复检与 Step 5 硬闸门，确保写作流程真正阻断风格违规章节进入数据回写。 |
 | **v5.5.5** | 新增 /webnovel-study 整本拆书能力；补齐 study CLI 路由、缓存契约、调用矩阵与仓库命令文档。 |
 | **v5.5.4** | 补齐写作链提示词强约束（流程硬约束、中文思维写作约束、Step 职责边界）；统一中文化审查/润色/Agent 报告文案；清理文档内部版本号与版本历史，降低与插件发版版本混淆。 |
 | **v5.5.3** | 新增统一 `preflight` 预检命令；写作链 CLI 示例统一为 UTF-8 运行方式，收口文档中的长 shell 预检片段并降低 Windows 终端乱码风险。 |
