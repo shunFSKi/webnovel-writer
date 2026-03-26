@@ -457,7 +457,7 @@ python -m dashboard.server --project-root "${PROJECT_ROOT}" --no-browser --port 
 
 用途：综合分析项目中所有参考拆书的文笔风格，自动提取共性特征和可复用模式，生成适合当前项目的风格指南。
 
-执行方式：
+**基础用法**（仅生成风格指南）：
 
 ```bash
 /webnovel-style-synth
@@ -469,35 +469,65 @@ python -m dashboard.server --project-root "${PROJECT_ROOT}" --no-browser --port 
 python3 /path/to/synth_style_guide.py --project-root . --source-dir 参考拆书
 ```
 
+**策略同步用法**（生成指南 + 同步到项目文件）：
+
+支持三种同步策略：
+- `append` - 追加模式：在现有内容后添加新内容
+- `merge` - 合并模式：智能合并现有和新内容
+- `replace` - 替换模式：完全替换特定章节
+
+```bash
+# 追加到写作风格（保留现有内容）
+/webnovel-style-synth --strategy append --target style
+
+# 合并到所有文件（智能融合）
+/webnovel-style-synth --strategy merge --target all
+
+# 替换风格契约（完全重构）
+/webnovel-style-synth --strategy replace --target contract
+```
+
+**目标文件**：
+- `preferences` - 同步到 `.webnovel/preferences.json`
+- `style` - 同步到 `设定集/写作风格.md`
+- `contract` - 同步到 `设定集/风格契约.md`
+- `all` - 同步到所有文件
+
 主要产物：
 
 - `设定集/参考拆书综合风格指南.md`，包含：
   - 参考书目清单
+  - 题材与类型分布
+  - 开篇钩子分析
+  - 节奏与结构特点
   - 共性风格特征（句长、段长、对白、描写特点）
-  - 各书详细特征分析
+  - 各书详细特征分析（剧情、人物、文笔、词句）
   - 可复用模式建议
   - 避坑指南
   - 项目适配建议
 
 功能特点：
 
-- 自动扫描 `参考拆书/` 目录下的所有拆书
-- 从 `03_文笔风格.md` 中提取风格特征
+- 读取所有 5 个拆书分析文件（00-04）
+- 从题材类型、剧情结构、人物特点、文笔风格、常用词句多维度分析
 - 统计句长、段长、对白占比、动作描写比例等数据
 - 识别常见写作模式和特征
 - 生成可操作的风格指南
+- **新增**：支持策略同步到项目风格文件
 
 适合的使用时机：
 
 - 项目初始化后，参考拆书积累到一定数量
 - 需要整理参考风格并形成项目专属风格指南时
 - 想要快速了解多本参考书的共同特点和差异时
+- **新增**：需要将参考风格同步到项目配置文件时
 
 与现有工具的配合：
 
 - 生成风格指南后，可与 `设定集/写作风格.md` 结合使用
 - 为 `/webnovel-write` 提供更明确的风格参考
 - 作为 `/webnovel-init` 的补充，在项目建立后进一步完善风格约束
+- **新增**：与 `设定集/风格契约.md` 配合，提供运行时风格约束
 
 ## 手动 CLI 与排障入口
 
